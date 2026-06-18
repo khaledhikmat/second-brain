@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+.venv/
+venv/
+ENV/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation (not needed in container)
+*.md
+!README.md
+
+# Logs (will be created in container)
+logs/
+*.log
+
+# Queue (will be created in container)
+queue/
+
+# Vault (will be mounted or created)
+vault/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Other
+.dockerignore
+Dockerfile
+docker-compose.yml
