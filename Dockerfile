@@ -1,4 +1,4 @@
-# Dockerfile for Islamic Notes Processor
+# Dockerfile for Notes Taking Processor
 FROM python:3.11-slim
 
 # Set working directory

@@ -50,7 +50,7 @@ Notes are organized into 8 predefined categories:
 | **Sayings** | Quotes, proverbs, wisdom |
 | **Poetry** | Poems, verses, lyrical content |
 | **Jots** | Quick notes, random thoughts (default) |
-| **Islam** | Islamic knowledge, teachings |
+| **Kb** | knowledge, teachings |
 | **History** | Historical facts, events |
 | **Strategy** | Strategic thinking, planning |
 | **Definitions** | Term definitions, explanations |
