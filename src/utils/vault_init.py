@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -42,6 +43,11 @@ def init_vault_from_remote(vault_path: Path, repo_url: str = None) -> bool:
     try:
         # Ensure parent directory exists
         vault_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # If vault directory exists but is not a git repo, remove it
+        if vault_path.exists() and not git_dir.exists():
+            logger.info(f"Removing existing non-git vault directory: {vault_path}")
+            shutil.rmtree(vault_path)
 
         # Clone repository
         result = subprocess.run(
