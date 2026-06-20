@@ -78,6 +78,9 @@ def init_vault_from_remote(vault_path: Path, repo_url: str = None) -> bool:
             timeout=5
         )
 
+        # Ensure all category folders exist
+        _ensure_category_folders(vault_path)
+
         return True
 
     except subprocess.TimeoutExpired:
@@ -123,6 +126,36 @@ def _create_empty_vault(vault_path: Path) -> bool:
 
     except Exception as e:
         logger.error(f"Failed to create empty vault: {e}", exc_info=True)
+        return False
+
+
+def _ensure_category_folders(vault_path: Path) -> bool:
+    """
+    Ensure all category folders exist in the vault.
+
+    Args:
+        vault_path: Path to the vault directory
+
+    Returns:
+        True if successful
+    """
+    try:
+        # Categories from environment or defaults
+        categories_str = os.getenv("PREDEFINED_CATEGORIES", "Sayings,Poetry,Jots,Islam,History,Strategy,Concepts,Path")
+        categories = [cat.strip().lower() for cat in categories_str.split(",")]
+
+        # Create language folders and categories
+        for lang in ["arabic", "english"]:
+            for category in categories:
+                category_path = vault_path / lang / category
+                if not category_path.exists():
+                    logger.info(f"Creating category folder: {category_path}")
+                    category_path.mkdir(parents=True, exist_ok=True)
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to create category folders: {e}", exc_info=True)
         return False
 
 
