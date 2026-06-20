@@ -309,7 +309,7 @@ Transcript:
         client = Anthropic(api_key=self.claude_processor.client.api_key)
 
         message = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=4096,
             messages=[
                 {"role": "user", "content": prompt}
@@ -390,7 +390,7 @@ Section Summaries:
                 client = Anthropic(api_key=self.claude_processor.client.api_key)
 
                 message = client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model="claude-sonnet-4-6",
                     max_tokens=8192,  # Larger output for combined summary
                     messages=[
                         {"role": "user", "content": final_prompt}
