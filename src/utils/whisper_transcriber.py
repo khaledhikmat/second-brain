@@ -61,6 +61,15 @@ class WhisperTranscriber:
                     'outtmpl': f'{audio_path}.%(ext)s',
                     'quiet': True,
                     'no_warnings': True,
+                    # Bot detection bypass options
+                    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'referer': 'https://www.youtube.com/',
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['android', 'web'],
+                            'player_skip': ['webpage', 'configs'],
+                        }
+                    },
                 }
 
                 logger.info("Downloading audio from YouTube...")
@@ -112,6 +121,18 @@ class WhisperTranscriber:
                 logger.info(f"✓ Transcription completed ({len(full_transcript)} chars)")
                 return full_transcript.strip()
 
+        except yt_dlp.utils.DownloadError as e:
+            error_msg = str(e)
+            if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
+                logger.error(f"YouTube blocked the download (bot detection): {e}")
+                raise RuntimeError(
+                    "YouTube blocked the download due to bot detection. "
+                    "This video may not have captions available via YouTube Transcript API. "
+                    "Try a different video or contact support to enable cookie authentication."
+                )
+            else:
+                logger.error(f"Failed to download YouTube video: {e}", exc_info=True)
+                raise RuntimeError(f"YouTube download failed: {e}")
         except Exception as e:
             logger.error(f"Failed to transcribe YouTube video: {e}", exc_info=True)
             raise RuntimeError(f"YouTube transcription failed: {e}")
