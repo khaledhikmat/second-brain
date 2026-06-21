@@ -444,8 +444,20 @@ Section Summaries:
 
             # If no transcript available, use Whisper API to transcribe audio
             if not transcript:
-                # Let Whisper auto-detect language (or we could pass language if known)
-                transcript = self.get_transcript_with_whisper(youtube_url, language=None)
+                logger.info("No captions found, attempting Whisper transcription...")
+                try:
+                    # Let Whisper auto-detect language (or we could pass language if known)
+                    transcript = self.get_transcript_with_whisper(youtube_url, language=None)
+                except RuntimeError as whisper_error:
+                    # Check if it's a bot detection error
+                    if "bot detection" in str(whisper_error).lower():
+                        raise RuntimeError(
+                            f"Cannot transcribe video '{video_info['title']}': "
+                            "YouTube blocked download (bot detection) and no captions are available. "
+                            "Please try a video with captions/subtitles enabled."
+                        )
+                    else:
+                        raise whisper_error
 
             # Summarize if transcript is too long
             if len(transcript) > self.summarize_threshold:

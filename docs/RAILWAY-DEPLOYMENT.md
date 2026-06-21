@@ -854,6 +854,122 @@ Both will safely process different messages (PostgreSQL row locking prevents con
 
 ---
 
+## Purging Vault Notes
+
+If you need to delete all notes and start fresh (while keeping the folder structure):
+
+### Step 1: Stop Railway Services
+
+Prevent new notes from being created during the purge:
+
+```
+Railway Dashboard → telegram-bot → Settings → Stop
+Railway Dashboard → batch-processor → Settings → Stop (or pause cron)
+```
+
+**Wait 30 seconds** to ensure all processes are stopped.
+
+### Step 2: Delete Notes from GitHub Vault
+
+**Option A: Local Clone (Recommended)**
+
+```bash
+cd ~/Desktop  # or any temp location
+git clone https://YOUR_GITHUB_TOKEN@github.com/YOUR_USERNAME/obsidian-vault.git temp-vault
+cd temp-vault
+
+# Keep folder structure, delete only .md files
+find arabic english -name "*.md" -delete
+
+# Verify what's left
+ls -R
+
+# Commit and push
+git add .
+git commit -m "Purge all notes - clean start"
+git push
+
+# Clean up
+cd ..
+rm -rf temp-vault
+```
+
+**Replace:**
+- `YOUR_GITHUB_TOKEN` - Your GitHub personal access token
+- `YOUR_USERNAME` - Your GitHub username
+
+**Option B: GitHub Web Interface**
+
+1. Go to your vault repository on GitHub
+2. Navigate into `arabic/` and `english/` folders
+3. Delete `.md` files (keep folders intact)
+4. Commit changes directly on GitHub
+
+### Step 3: Clear Database (Optional but Recommended)
+
+Remove processing history from PostgreSQL:
+
+```bash
+# Using Railway CLI
+railway login
+railway link  # Select your project
+
+# Clear processed notes and messages tables
+railway run psql -c "DELETE FROM processed_notes;"
+railway run psql -c "DELETE FROM messages;"
+
+# Verify clean state
+railway run psql -c "SELECT COUNT(*) FROM messages;"
+```
+
+**Expected output:** `count = 0`
+
+### Step 4: Restart Railway Services
+
+```
+Railway Dashboard → telegram-bot → Settings → Restart
+Railway Dashboard → batch-processor → Settings → Restart
+```
+
+### Step 5: Verify Clean State
+
+**Check GitHub vault:**
+- Should have folders: `arabic/`, `english/`
+- Each has subfolders: `jots/`, `poetry/`, `strategy/`, etc.
+- **No `.md` files**
+
+**Check Obsidian (if connected):**
+- Settings → Obsidian Git → Pull
+- Vault should be empty (only folder structure)
+- Ready for new notes
+
+**Check Railway logs:**
+```
+Bot is running in batch mode
+Worker claimed 0 messages
+```
+
+### Quick One-Liner Script
+
+If you want to purge quickly:
+
+```bash
+# Stop services in Railway Dashboard first, then:
+cd ~/Desktop && \
+git clone https://YOUR_TOKEN@github.com/YOUR_USERNAME/obsidian-vault.git temp-vault && \
+cd temp-vault && \
+find arabic english -name "*.md" -delete && \
+git add . && \
+git commit -m "Purge all notes - clean start" && \
+git push && \
+cd .. && \
+rm -rf temp-vault
+```
+
+Then restart Railway services manually.
+
+---
+
 ## Summary
 
 **You now have:**

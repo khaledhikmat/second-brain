@@ -12,9 +12,9 @@ Convert this app to be platform allowing others to customize certain aspects of 
 
 Deploy this app to Railway:
 
-- [ ] Railway Services
-- [ ] Posgres Database
-- [ ] Github Private Repo for the vault
+- [x] Railway Services
+- [x] Posgres Database
+- [x] Github Private Repo for the vault
 
 ## Obsidian
 
@@ -39,6 +39,6 @@ Oragnize source code for production:
 - [x] Create a simple user interface as dashboard using server-side rendering like HTMX.
 - [x] Retrofit for a better structure now that all features are included??
 - [x] Switch to Postgres locally.
-- [ ] Switch to a new repo and check in to Github.
+- [x] Switch to a new repo and check in to Github.
 
 
