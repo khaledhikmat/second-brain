@@ -1,0 +1,610 @@
+from datetime import datetime
+from typing import Protocol, Optional, List, Dict, Any
+
+from contextlib import asynccontextmanager
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.pool import NullPool, StaticPool
+from sqlalchemy import text
+from sqlalchemy import select, update, delete, func, and_, or_, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.services.setting.typex import ISettingService
+from src.services.logger.typex import ILoggerService
+from typex import Base,  Message, ProcessedNote, MessageStatus
+
+class PostgresDataService:
+    def __init__(self, setting: ISettingService, logger: ILoggerService):
+        self._setting = setting
+        self._logger = logger
+
+    ## Management methods
+    async def initialize(self) -> bool:
+        """
+        Initialize database connection and create tables.
+
+        Returns:
+            bool: True if initialization successful, False otherwise
+        """
+        try:
+            self.engine = create_async_engine(
+                self._setting.get_database_url(),
+                echo=self._setting.get_database_echo(),
+                pool_size=5,
+                max_overflow=10,
+                pool_pre_ping=True,  # Verify connections before using
+            )
+
+            # Create session factory
+            self.session_factory = async_sessionmaker(
+                self.engine,
+                class_=AsyncSession,
+                expire_on_commit=False
+            )
+
+            # Create tables if they don't exist
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+
+            # Mark as available before testing connection
+            self._is_available = True
+
+            # Test connection
+            async with self.get_session() as session:
+                await session.execute(text("SELECT 1"))
+
+            self._logger.info(f"Database initialized successfully: {self._mask_url(self.setting.get_database_url())}")
+            return True
+
+        except Exception as e:
+            self._logger.error(f"Failed to initialize database: {e}", exc_info=True)
+            self._is_available = False
+            return False
+
+    async def is_database_available(self) -> bool:
+        """
+        Perform health check on database connection.
+
+        Returns:
+            bool: True if database is healthy, False otherwise
+        """
+        if not self._is_available:
+            return False
+
+        try:
+            async with self.get_session() as session:
+                await session.execute(text("SELECT 1"))
+            return True
+        except Exception as e:
+            self._logger.error(f"Database health check failed: {e}")
+            self._is_database_available = False
+            return False
+
+    async def finalize(self):
+        """Close database connections."""
+        if self.engine:
+            await self.engine.dispose()
+            self._logger.info("Database connections closed")
+
+    ## Message-related methods
+    async def create_message(self, 
+            raw_text: str,
+            category: str,
+            channel: str,
+            language: Optional[str] = None
+        ) -> Optional[Message]:
+        """
+        Create a new message record.
+
+        Args:
+            raw_text: Original message text
+            category: Optional message category
+            channel: Message channel ("telegram", "http")
+            language: Optional detected language
+
+        Returns:
+            Created Message object or None if failed
+        """
+        try:
+            async with self.get_session() as session:
+                message = Message(
+                    raw_text=raw_text,
+                    category=category,
+                    language=language,
+                    timestamp=datetime.utcnow()
+                )
+                session.add(message)
+                await session.flush()  # Get the ID without committing
+                self._logger.debug(f"Created message record: id={message.id}, source={source}, status={processing_status}")
+                return message
+        except Exception as e:
+            self._logger.error(f"Failed to create message: {e}", exc_info=True)
+            return None
+
+    async def update_message(self, 
+        message_id: int,
+        status: MessageStatus,
+        error_message: Optional[str] = None,
+        category: Optional[str] = None,
+        language: Optional[str] = None) -> bool:
+        """
+        Update message processing status.
+
+        Args:
+            message_id: Message ID
+            status: New status
+            error_message: Optional error message if failed
+            category: Optional category (if detected during processing)
+            language: Optional language (if detected during processing)
+
+        Returns:
+            True if update successful, False otherwise
+        """
+        try:
+            async with self.get_session() as session:
+                update_data = {
+                    "processing_status": status,
+                    "updated_at": datetime.utcnow()
+                }
+                if error_message:
+                    update_data["error_message"] = error_message
+                if category:
+                    update_data["category"] = category
+                if language:
+                    update_data["language"] = language
+
+                stmt = (
+                    update(Message)
+                    .where(Message.id == message_id)
+                    .values(**update_data)
+                )
+                result = await session.execute(stmt)
+                await session.flush()
+
+                success = result.rowcount > 0
+                if success:
+                    self._logger.debug(f"Updated message {message_id} status to {status}")
+                else:
+                    self._logger.warning(f"No message found with id={message_id}")
+                return success
+        except Exception as e:
+            self._logger.error(f"Failed to update message status: {e}", exc_info=True)
+            return False
+    
+    async def increment_message_retry_count(self, message_id: int) -> bool:
+        """
+        Increment the retry count for a message.
+
+        Returns:
+            True if the retry count was incremented, False otherwise
+        """
+        try:
+            async with self.get_session() as session:
+                stmt = (
+                    update(Message)
+                    .where(Message.id == message_id)
+                    .values(retry_count=Message.retry_count + 1, updated_at=datetime.utcnow())
+                )
+                result = await session.execute(stmt)
+                await session.flush()
+                return result.rowcount > 0
+        except Exception as e:
+            self._logger.error(f"Failed to increment retry count: {e}", exc_info=True)
+            return False
+
+    async def get_message_by_id(self, message_id: int) -> Optional[Message]:
+        """
+        Get a message by its ID.
+
+        Returns:
+            The message if found, None otherwise
+        """
+        try:
+            async with self.get_session() as session:
+                stmt = select(Message).where(Message.id == message_id)
+                result = await session.execute(stmt)
+                return result.scalar_one_or_none()
+        except Exception as e:
+            self._logger.error(f"Failed to get message by id: {e}", exc_info=True)
+            return None
+
+    async def get_messages_by_status(self, status: MessageStatus, limit: Optional[int] = None) -> List[Message]:
+        """
+        Get messages by their processing status.
+
+        Returns:
+            A list of messages with the specified status
+        """
+        try:
+            async with self.get_session() as session:
+                stmt = select(Message).where(Message.processing_status == status).order_by(Message.timestamp.desc())
+                if limit:
+                    stmt = stmt.limit(limit)
+                result = await session.execute(stmt)
+                return list(result.scalars().all())
+        except Exception as e:
+            self._logger.error(f"Failed to get messages by status: {e}", exc_info=True)
+            return []
+
+    async def get_failed_messages(self, max_retry_count: Optional[int] = None, limit: Optional[int] = None) -> List[Message]:
+        """
+        Get failed messages that can be retried.
+
+        Args:
+            max_retry_count: Only return messages below this retry count
+            limit: Maximum number of messages to return
+
+        Returns:
+            List of failed messages
+        """
+        try:
+            async with self.get_session() as session:
+                stmt = select(Message).where(Message.processing_status == MessageStatus.FAILED)
+
+                if max_retry_count is not None:
+                    stmt = stmt.where(Message.retry_count < max_retry_count)
+
+                stmt = stmt.order_by(Message.timestamp.desc())
+
+                if limit:
+                    stmt = stmt.limit(limit)
+
+                result = await session.execute(stmt)
+                return list(result.scalars().all())
+        except Exception as e:
+            self._logger.error(f"Failed to get failed messages: {e}", exc_info=True)
+            return []
+
+    async def get_queued_messages(self, limit: Optional[int] = None) -> List[Message]:
+        """
+        Get all messages with QUEUED status.
+
+        Args:
+            limit: Optional maximum number of messages to retrieve
+
+        Returns:
+            List of queued messages
+        """
+        try:
+            async with self.get_session() as session:
+                stmt = (
+                    select(Message)
+                    .where(Message.processing_status == MessageStatus.QUEUED)
+                    .order_by(Message.timestamp.asc())
+                )
+                if limit:
+                    stmt = stmt.limit(limit)
+
+                result = await session.execute(stmt)
+                return list(result.scalars().all())
+        except Exception as e:
+            self._logger.error(f"Failed to get queued messages: {e}", exc_info=True)
+            return []
+
+    async def find_completed_message_by_youtube_url(self, youtube_url: str) -> Optional[Message]:
+        """
+        Find a completed message with the given YouTube URL.
+
+        Queries the ProcessedNote.processed_data JSON field for exact URL match.
+        Used for deduplication of YouTube URLs during batch processing.
+
+        Supports both PostgreSQL and SQLite with database-specific JSON query syntax.
+
+        Args:
+            youtube_url: The YouTube URL to search for (normalized format)
+
+        Returns:
+            Completed Message object if found, None otherwise
+        """
+        try:
+            async with self.get_session() as session:
+                # Detect database type from connection URL
+                db_url = str(session.bind.url)
+
+                # Build query with database-specific JSON syntax
+                if "postgresql" in db_url:
+                    # PostgreSQL: Use ->> operator (text extraction)
+                    # Use as_string() to extract JSON value as text
+                    json_condition = ProcessedNote.processed_data['url'].as_string() == youtube_url
+                else:
+                    # SQLite: Use json_extract function
+                    json_condition = func.json_extract(ProcessedNote.processed_data, '$.url') == youtube_url
+
+                # Join Message and ProcessedNote, query JSON field for URL
+                stmt = (
+                    select(Message)
+                    .join(ProcessedNote, Message.id == ProcessedNote.message_id)
+                    .where(
+                        and_(
+                            Message.processing_status == MessageStatus.COMPLETED,
+                            json_condition
+                        )
+                    )
+                )
+
+                result = await session.execute(stmt)
+                message = result.scalar_one_or_none()
+
+                if message:
+                    self._logger.debug(f"Found duplicate YouTube URL: {youtube_url} (message_id={message.id})")
+                return message
+        except Exception as e:
+            self._logger.error(f"Failed to find completed message by YouTube URL: {e}", exc_info=True)
+            return None
+
+    async def dequeue_messages(self, limit: int, worker_id: str) -> List[Message]:
+        """
+        Atomically dequeue messages with database-specific optimizations.
+
+        This method prevents race conditions when multiple workers process the queue
+        simultaneously. It uses different strategies based on the database type:
+
+        - Uses SELECT FOR UPDATE SKIP LOCKED (true row-level locking)
+          allowing parallel workers to process different messages simultaneously
+
+        Args:
+            limit: Maximum number of messages to dequeue
+            worker_id: Worker identifier
+
+        Returns:
+            List of claimed messages with status updated to PROCESSING
+        """
+        try:
+            async with self.get_session() as session:
+                # Step 1: SELECT FOR UPDATE SKIP LOCKED to claim messages atomically
+                stmt = (
+                    select(Message)
+                    .where(Message.processing_status == MessageStatus.QUEUED)
+                    .order_by(Message.timestamp.asc())
+                    .limit(limit)
+                    .with_for_update(skip_locked=True)
+                )
+
+                result = await session.execute(stmt)
+                messages = list(result.scalars().all())
+
+                if not messages:
+                    return []
+
+                # Step 2: Update claimed messages to PROCESSING status with worker_id
+                message_ids = [msg.id for msg in messages]
+                update_stmt = (
+                    update(Message)
+                    .where(Message.id.in_(message_ids))
+                    .values(
+                        processing_status=MessageStatus.PROCESSING,
+                        worker_id=worker_id,
+                        updated_at=datetime.utcnow()
+                    )
+                )
+                await session.execute(update_stmt)
+                await session.flush()
+
+                self._logger.info(f"Worker {worker_id} claimed {len(messages)} messages (PostgreSQL)")
+                return messages
+        except Exception as e:
+            self._logger.error(f"Failed to dequeue messages (PostgreSQL): {e}", exc_info=True)
+            return []
+
+    ## Processed Notes-related methods
+    async def create_note(self, 
+            message_id: int, 
+            title: str,
+            file_path: str,
+            tags: Optional[List[str]] = None,
+            concepts: Optional[List[str]] = None,
+            entities: Optional[Dict[str, List[str]]] = None,
+            summary: Optional[str] = None,
+            processed_data: Optional[Dict[str, Any]] = None
+        ) -> Optional[ProcessedNote]:
+        """
+        Create a processed note record.
+
+        Args:
+            message_id: Associated message ID
+            title: Note title
+            file_path: Path to markdown file
+            tags: List of tags
+            concepts: List of concepts
+            entities: Dict of entity lists (people, places, terms)
+            summary: Note summary
+            processed_data: Full processed data structure
+
+        Returns:
+            Created ProcessedNote object or None if failed
+        """
+        try:
+            async with self.get_session() as session:
+                note = ProcessedNote(
+                    message_id=message_id,
+                    title=title,
+                    file_path=file_path,
+                    tags=tags,
+                    concepts=concepts,
+                    entities=entities,
+                    summary=summary,
+                    processed_data=processed_data,
+                    created_at=datetime.utcnow()
+                )
+                session.add(note)
+                await session.flush()
+                self._logger.debug(f"Created note record: id={note.id}, title={title}")
+                return note
+        except Exception as e:
+            self._logger.error(f"Failed to create note: {e}", exc_info=True)
+            return None
+
+    async def get_note_by_message_id(self, message_id: int) -> Optional[ProcessedNote]:
+        """Get note by message ID."""
+        try:
+            async with self.get_session() as session:
+                stmt = select(ProcessedNote).where(ProcessedNote.message_id == message_id)
+                result = await session.execute(stmt)
+                return result.scalar_one_or_none()
+        except Exception as e:
+            self._logger.error(f"Failed to get note by message_id: {e}", exc_info=True)
+            return None
+
+    ## Stats-related methods
+    async def get_message_counts_by_category(self) -> Dict[str, int]:
+        """
+        Get the count of messages by their category.
+
+        Returns:
+            A dictionary mapping categories to their respective counts
+        """
+        try:
+            async with self.get_session() as session:
+                stmt = (
+                    select(Message.category, func.count(Message.id))
+                    .where(Message.category.isnot(None))
+                    .group_by(Message.category)
+                )
+                result = await session.execute(stmt)
+                return {category: count for category, count in result.all()}
+        except Exception as e:
+            self._logger.error(f"Failed to get category counts: {e}", exc_info=True)
+            return {}
+
+    async def get_message_counts_by_language(self) -> Dict[str, int]:
+        """
+        Get the count of messages by their language.
+
+        Returns:
+            A dictionary mapping languages to their respective counts
+        """
+        try:
+            async with self.get_session() as session:
+                stmt = (
+                    select(Message.language, func.count(Message.id))
+                    .where(Message.language.isnot(None))
+                    .group_by(Message.language)
+                )
+                result = await session.execute(stmt)
+                return {language: count for language, count in result.all()}
+        except Exception as e:
+            self._logger.error(f"Failed to get language counts: {e}", exc_info=True)
+            return {}
+
+    async def get_total_messages(self) -> int:
+        """
+        Get the total count of messages.
+
+        Returns:
+            The total count of messages
+        """
+        try:
+            async with self.get_session() as session:
+                stmt = select(func.count(Message.id))
+                result = await session.execute(stmt)
+                return result.scalar() or 0
+        except Exception as e:
+            self._logger.error(f"Failed to get total message count: {e}", exc_info=True)
+            return 0
+
+    async def get_success_rate(self) -> float:
+        """
+        Get the success rate of message processing.
+
+        Returns:
+            The success rate as a float
+        """
+        try:
+            async with self.get_session() as session:
+                total_stmt = select(func.count(Message.id))
+                total_result = await session.execute(total_stmt)
+                total = total_result.scalar() or 0
+
+                if total == 0:
+                    return 0.0
+
+                success_stmt = (
+                    select(func.count(Message.id))
+                    .where(Message.processing_status == MessageStatus.COMPLETED)
+                )
+                success_result = await session.execute(success_stmt)
+                success = success_result.scalar() or 0
+
+                return (success / total) * 100
+        except Exception as e:
+            self._logger.error(f"Failed to calculate success rate: {e}", exc_info=True)
+            return 0.0
+
+    #### PRIVATE METHODS ####
+
+    @asynccontextmanager
+    async def _get_database_session(self):
+        """
+        Get a database session with automatic cleanup.
+
+        Usage:
+            async with db_manager.get_session() as session:
+                # Use session here
+                pass
+
+        Yields:
+            AsyncSession: Database session
+        """
+        if not self._is_database_available or not self.session_factory:
+            raise RuntimeError("Database is not available")
+
+        session = self.session_factory()
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+    @asynccontextmanager
+    async def get_database_session_safe(self):
+        """
+        Get a database session with graceful degradation.
+
+        If database is unavailable, yields None instead of raising an error.
+        Use this for non-critical operations where the system should continue
+        even if database writes fail.
+
+        Usage:
+            async with db_manager.get_session_safe() as session:
+                if session:
+                    # Use session here
+                    pass
+                else:
+                    # Database unavailable, handle gracefully
+                    logger.warning("Database unavailable, skipping operation")
+
+        Yields:
+            Optional[AsyncSession]: Database session or None if unavailable
+        """
+        if not self._is_database_available or not self.session_factory:
+            self._logger.warning("Database unavailable, operating in degraded mode")
+            yield None
+            return
+
+        session = self.session_factory()
+        try:
+            yield session
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            self._logger.error(f"Database operation failed: {e}", exc_info=True)
+            # Don't re-raise - allow system to continue
+        finally:
+            await session.close()
+
+    def _mask_url(self, url: str) -> str:
+        """Mask sensitive information in database URL for logging."""
+        if "@" in url:
+            # Mask password in PostgreSQL URLs
+            parts = url.split("@")
+            credentials = parts[0].split("://")
+            if len(credentials) > 1 and ":" in credentials[1]:
+                user = credentials[1].split(":")[0]
+                masked = f"{credentials[0]}://{user}:****@{parts[1]}"
+                return masked
+        return url
+
+
+

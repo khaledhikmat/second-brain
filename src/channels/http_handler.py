@@ -13,7 +13,7 @@ import uvicorn
 from ..processors.claude_processor import ClaudeProcessor
 from ..processors.note_generator import ObsidianNoteGenerator
 from ..utils.language_detector import detect_language
-from ..middleware.auth import create_api_key_dependency
+from .http.middleware.auth import create_api_key_dependency
 from ..db.database import get_db_manager
 from ..db.repository import MessageRepository
 from ..db.models import MessageStatus

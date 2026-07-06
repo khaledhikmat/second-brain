@@ -1,13 +1,42 @@
-"""Vault initialization utility for cloud deployments."""
-
-import logging
 import os
+import re
+from typing import Optional, List
 import shutil
-import subprocess
+from langdetect import detect, LangDetectException
 from pathlib import Path
+import subprocess
 
-logger = logging.getLogger(__name__)
+def is_arabic(text: str) -> bool:
+    """Check if text is primarily in Arabic."""
+    return _detect_language(text) == "ar"
 
+
+def is_english(text: str) -> bool:
+    """Check if text is primarily in English."""
+    return _detect_language(text) == "en"
+
+def is_youtube_url(text: str) -> bool:
+    """
+    Check if text contains a YouTube URL.
+
+    Args:
+        text: Text to check
+
+    Returns:
+        True if text contains a YouTube URL
+    """
+    youtube_patterns = [
+        r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=[\w-]+',
+        r'(?:https?://)?(?:www\.)?youtu\.be/[\w-]+',
+        r'(?:https?://)?(?:www\.)?youtube\.com/embed/[\w-]+',
+        r'(?:https?://)?(?:www\.)?youtube\.com/v/[\w-]+',
+    ]
+
+    for pattern in youtube_patterns:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+
+    return False
 
 def init_vault_from_remote(vault_path: Path, repo_url: str = None) -> bool:
     """
@@ -24,29 +53,22 @@ def init_vault_from_remote(vault_path: Path, repo_url: str = None) -> bool:
     Returns:
         True if vault is ready, False otherwise
     """
-    # Get repo URL from parameter or environment
-    repo_url = repo_url or os.getenv("VAULT_REPO_URL")
-
     # Check if vault already has .git directory
     git_dir = vault_path / ".git"
     if git_dir.exists():
-        logger.info(f"Vault already initialized at {vault_path}")
         return True
 
     # If no repo URL, just create empty vault structure
     if not repo_url:
-        logger.info("No VAULT_REPO_URL provided, creating empty vault structure")
         return _create_empty_vault(vault_path)
 
     # Clone repository
-    logger.info(f"Initializing vault by cloning from remote repository...")
     try:
         # Ensure parent directory exists
         vault_path.parent.mkdir(parents=True, exist_ok=True)
 
         # If vault directory exists but is not a git repo, remove it
         if vault_path.exists() and not git_dir.exists():
-            logger.info(f"Removing existing non-git vault directory: {vault_path}")
             shutil.rmtree(vault_path)
 
         # Clone repository
@@ -58,11 +80,8 @@ def init_vault_from_remote(vault_path: Path, repo_url: str = None) -> bool:
         )
 
         if result.returncode != 0:
-            logger.error(f"Failed to clone vault repository: {result.stderr}")
             # Fall back to creating empty vault
             return _create_empty_vault(vault_path)
-
-        logger.info("Successfully cloned vault repository")
 
         # Configure git user
         subprocess.run(
@@ -84,13 +103,57 @@ def init_vault_from_remote(vault_path: Path, repo_url: str = None) -> bool:
         return True
 
     except subprocess.TimeoutExpired:
-        logger.error("Git clone timed out after 60 seconds")
         return _create_empty_vault(vault_path)
     except Exception as e:
-        logger.error(f"Error cloning vault repository: {e}", exc_info=True)
         return _create_empty_vault(vault_path)
 
+def ensure_vault_git_configured(vault_path: Path) -> bool:
+    """
+    Ensure the vault has Git user configuration.
 
+    Args:
+        vault_path: Path to the vault directory
+
+    Returns:
+        True if configuration successful
+    """
+    git_dir = vault_path / ".git"
+    if not git_dir.exists():
+        return False
+
+    try:
+        # Check if user is already configured
+        result = subprocess.run(
+            ["git", "config", "user.name"],
+            cwd=vault_path,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0 and result.stdout.strip():
+            return True
+
+        # Configure git user
+        subprocess.run(
+            ["git", "config", "user.name", "Notes System Bot"],
+            cwd=vault_path,
+            capture_output=True,
+            timeout=5
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "bot@notes-system.local"],
+            cwd=vault_path,
+            capture_output=True,
+            timeout=5
+        )
+
+        return True
+
+    except Exception as e:
+        return False
+
+## PRIVATE HELPERS
 def _create_empty_vault(vault_path: Path) -> bool:
     """
     Create empty vault structure with category folders.
@@ -102,8 +165,6 @@ def _create_empty_vault(vault_path: Path) -> bool:
         True if successful
     """
     try:
-        logger.info(f"Creating empty vault structure at {vault_path}")
-
         # Categories
         categories = ["sayings", "poetry", "jots", "islam", "history", "strategy", "concepts", "path"]
 
@@ -121,11 +182,9 @@ def _create_empty_vault(vault_path: Path) -> bool:
                 f.write(".obsidian/\n")
                 f.write(".trash/\n")
 
-        logger.info("Empty vault structure created successfully")
         return True
 
     except Exception as e:
-        logger.error(f"Failed to create empty vault: {e}", exc_info=True)
         return False
 
 
@@ -149,62 +208,38 @@ def _ensure_category_folders(vault_path: Path) -> bool:
             for category in categories:
                 category_path = vault_path / lang / category
                 if not category_path.exists():
-                    logger.info(f"Creating category folder: {category_path}")
                     category_path.mkdir(parents=True, exist_ok=True)
 
         return True
 
     except Exception as e:
-        logger.error(f"Failed to create category folders: {e}", exc_info=True)
         return False
 
 
-def ensure_vault_git_configured(vault_path: Path) -> bool:
+def _detect_language(text: str) -> str:
     """
-    Ensure the vault has Git user configuration.
+    Detect the language of the given text.
 
     Args:
-        vault_path: Path to the vault directory
+        text: The text to analyze
 
     Returns:
-        True if configuration successful
+        Language code ('ar' for Arabic, 'en' for English)
+        Defaults to 'en' if detection fails
     """
-    git_dir = vault_path / ".git"
-    if not git_dir.exists():
-        logger.warning(f"Vault at {vault_path} is not a Git repository")
-        return False
+    if not text or not text.strip():
+        return "en"
 
     try:
-        # Check if user is already configured
-        result = subprocess.run(
-            ["git", "config", "user.name"],
-            cwd=vault_path,
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+        detected = detect(text)
 
-        if result.returncode == 0 and result.stdout.strip():
-            logger.info(f"Git user already configured: {result.stdout.strip()}")
-            return True
+        # Map to our supported languages
+        if detected in ['ar', 'arabic']:
+            return "ar"
+        else:
+            # Default to English for all other languages
+            return "en"
 
-        # Configure git user
-        subprocess.run(
-            ["git", "config", "user.name", "Notes System Bot"],
-            cwd=vault_path,
-            capture_output=True,
-            timeout=5
-        )
-        subprocess.run(
-            ["git", "config", "user.email", "bot@notes-system.local"],
-            cwd=vault_path,
-            capture_output=True,
-            timeout=5
-        )
+    except LangDetectException as e:
+        return "en"  # Default to English
 
-        logger.info("Git user configuration completed")
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to configure Git user: {e}", exc_info=True)
-        return False

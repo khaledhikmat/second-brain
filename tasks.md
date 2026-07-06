@@ -40,5 +40,5 @@ Oragnize source code for production:
 - [x] Retrofit for a better structure now that all features are included??
 - [x] Switch to Postgres locally.
 - [x] Switch to a new repo and check in to Github.
-
+- [ ] Add `channel` column to the `messages` table
 

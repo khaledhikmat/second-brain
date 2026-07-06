@@ -1,6 +1,3 @@
-"""OpenAI Whisper transcription utility for YouTube videos."""
-
-import logging
 import os
 import tempfile
 from pathlib import Path
@@ -10,21 +7,16 @@ import yt_dlp
 from pydub import AudioSegment
 from openai import OpenAI
 
-logger = logging.getLogger(__name__)
+from src.services.setting.typex import ISettingService
+from src.services.logger.typex import ILoggerService
 
-
-class WhisperTranscriber:
+class WhisperTranscriberService:
     """Transcribe audio using OpenAI Whisper API."""
 
-    def __init__(self, api_key: str):
-        """
-        Initialize Whisper transcriber.
-
-        Args:
-            api_key: OpenAI API key
-        """
-        self.client = OpenAI(api_key=api_key)
-        logger.info("WhisperTranscriber initialized (using OpenAI Whisper API)")
+    def __init__(self, setting: ISettingService, logger: ILoggerService):
+        self._setting = setting
+        self._logger = logger
+        self._client = OpenAI(api_key=self._setting.get_openai_api_key())
 
     def transcribe_youtube_video(self, youtube_url: str, language: Optional[str] = None) -> str:
         """
@@ -44,7 +36,7 @@ class WhisperTranscriber:
             RuntimeError: If transcription fails
         """
         try:
-            logger.info(f"Starting YouTube transcription for: {youtube_url}")
+            self._logger.info(f"Starting YouTube transcription for: {youtube_url}")
 
             # Use temporary directory for all intermediate files
             # Automatically cleaned up when exiting the 'with' block
@@ -72,7 +64,7 @@ class WhisperTranscriber:
                     },
                 }
 
-                logger.info("Downloading audio from YouTube...")
+                self._logger.info("Downloading audio from YouTube...")
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([youtube_url])
 
@@ -83,10 +75,10 @@ class WhisperTranscriber:
                     raise RuntimeError(f"Audio file not found: {audio_file_path}")
 
                 file_size_mb = os.path.getsize(audio_file_path) / (1024 * 1024)
-                logger.info(f"✓ Audio downloaded ({file_size_mb:.2f} MB)")
+                self._logger.info(f"✓ Audio downloaded ({file_size_mb:.2f} MB)")
 
                 # Split audio into 10-minute chunks (Whisper API has 25MB limit)
-                logger.info("Splitting audio into chunks...")
+                self._logger.info("Splitting audio into chunks...")
                 audio = AudioSegment.from_mp3(audio_file_path)
                 chunk_length_ms = 10 * 60 * 1000  # 10 minutes in milliseconds
 
@@ -97,12 +89,12 @@ class WhisperTranscriber:
                     chunk.export(chunk_filename, format="mp3")
                     chunks.append(chunk_filename)
 
-                logger.info(f"✓ Split into {len(chunks)} chunks")
+                self._logger.info(f"✓ Split into {len(chunks)} chunks")
 
                 # Transcribe each chunk
                 full_transcript = ""
                 for idx, chunk_file in enumerate(chunks, 1):
-                    logger.info(f"Transcribing chunk {idx}/{len(chunks)}...")
+                    self._logger.info(f"Transcribing chunk {idx}/{len(chunks)}...")
 
                     with open(chunk_file, "rb") as audio_file:
                         # Prepare transcription parameters
@@ -115,26 +107,26 @@ class WhisperTranscriber:
                         if language:
                             transcribe_params["language"] = language
 
-                        transcript = self.client.audio.transcriptions.create(**transcribe_params)
+                        transcript = self._client.audio.transcriptions.create(**transcribe_params)
                         full_transcript += transcript.text + "\n"
 
-                logger.info(f"✓ Transcription completed ({len(full_transcript)} chars)")
+                self._logger.info(f"✓ Transcription completed ({len(full_transcript)} chars)")
                 return full_transcript.strip()
 
         except yt_dlp.utils.DownloadError as e:
             error_msg = str(e)
             if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
-                logger.error(f"YouTube blocked the download (bot detection): {e}")
+                self._logger.error(f"YouTube blocked the download (bot detection): {e}")
                 raise RuntimeError(
                     "YouTube blocked the download due to bot detection. "
                     "This video may not have captions available via YouTube Transcript API. "
                     "Try a different video or contact support to enable cookie authentication."
                 )
             else:
-                logger.error(f"Failed to download YouTube video: {e}", exc_info=True)
+                self._logger.error(f"Failed to download YouTube video: {e}", exc_info=True)
                 raise RuntimeError(f"YouTube download failed: {e}")
         except Exception as e:
-            logger.error(f"Failed to transcribe YouTube video: {e}", exc_info=True)
+            self._logger.error(f"Failed to transcribe YouTube video: {e}", exc_info=True)
             raise RuntimeError(f"YouTube transcription failed: {e}")
 
     def transcribe_audio_file(self, audio_path: Path, language: Optional[str] = None) -> str:
@@ -152,7 +144,7 @@ class WhisperTranscriber:
             RuntimeError: If transcription fails
         """
         try:
-            logger.info(f"Transcribing audio file: {audio_path}")
+            self._logger.info(f"Transcribing audio file: {audio_path}")
 
             with open(audio_path, "rb") as audio_file:
                 transcribe_params = {
@@ -163,10 +155,10 @@ class WhisperTranscriber:
                 if language:
                     transcribe_params["language"] = language
 
-                transcript = self.client.audio.transcriptions.create(**transcribe_params)
+                transcript = self._client.audio.transcriptions.create(**transcribe_params)
 
             return transcript.text
 
         except Exception as e:
-            logger.error(f"Failed to transcribe audio file: {e}", exc_info=True)
+            self._logger.error(f"Failed to transcribe audio file: {e}", exc_info=True)
             raise RuntimeError(f"Audio transcription failed: {e}")
