@@ -1,52 +1,7 @@
-# {{ title or 'Untitled' }}
-
-**Category:** {{ category or 'Uncategorized' }}
-**Language:** {{ language or 'en' }}
-**Created:** {{ created }}
-
+---
+{{ frontmatter }}
 ---
 
-{% if summary %}
-## Summary
+{{ message }}
 
-{{ summary }}
-
-{% endif %}
-## Content
-
-{{ content or '' }}
-
-{% if concepts %}
-## Concepts
-
-{{ concepts | mdlist }}
-
-{% endif %}
-{% if entities %}
-## Entities
-
-{% if entities.people %}
-**People:** {{ entities.people | join(', ') }}
-{% endif %}
-{% if entities.places %}
-**Places:** {{ entities.places | join(', ') }}
-{% endif %}
-{% if entities.terms %}
-**Terms:** {{ entities.terms | join(', ') }}
-{% endif %}
-
-{% endif %}
-{% if original_text %}
----
-
-## Original Content
-
-{{ original_text }}
-
-{% endif %}
----
-
-*Source: {{ source }} | Generated: {{ timestamp }}*
-{% if url %}
-{{ url }}
-{% endif %}
+*Generated on {{ timestamp }}*

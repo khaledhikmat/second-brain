@@ -60,7 +60,7 @@ async def process_batch():
 
         # Summarizer Services
         text_summarizer_service = GeminiTextSummarizerService(settings_service, logger_service)
-        pdf_summarizer_service = PdfSummarizerService(settings_service, logger_service)
+        pdf_summarizer_service = PdfSummarizerService(settings_service, logger_service, text_summarizer_service)
         youtube_summarizer_service = YoutubeSummarizerService(settings_service, logger_service, transcriber_service, text_summarizer_service)
         router_summarizer_service = RouterSummarizerService(settings_service, logger_service, text_summarizer_service, youtube_summarizer_service, pdf_summarizer_service)
 
@@ -68,7 +68,7 @@ async def process_batch():
         syncer_service = GitSyncerService(settings_service, logger_service)
 
         # Note Service
-        formatters: List[IFormatManager] = [ObsidianFormatManager(settings_service, logger_service)]
+        formatters: List[IFormatManager] = [ObsidianFormatManager(settings_service, logger_service), OkfFormatManager(settings_service, logger_service)]
         note_service = GeneratorNoteService(settings_service, logger_service, syncer_service, formatters)
 
         # Process each evaluation
@@ -77,10 +77,10 @@ async def process_batch():
 
         for message in messages:
             try:
-                logger_service.info(f"Processing evaluation {message.id}...")
+                logger_service.info(f"Processing message ID: {message.id} - language: {message.language} - category: {message.category}")
 
                 # summarize message
-                summary_results = await router_summarizer_service.summarize(message.channel, message.raw_text, message.category, message.language)
+                summary_results = await router_summarizer_service.summarize(message.channel, message.category, message.language, message.raw_text)
                 if summary_results is None:
                     logger_service.error(f"Failed to summarize message {message.id}")
                     raise ValueError(f"Failed to summarize message {message.id}")
@@ -91,19 +91,19 @@ async def process_batch():
                 if note_paths is None:
                     raise RuntimeError(f"Failed to generate note for {message.id}")
 
-                for note_path in note_paths:
+                # for note_path in note_paths:
                     # create the note in the database
-                    note = await db_service.create_note(message.id,
-                        summary_results.title,
-                        str(note_path),
-                        summary_results.tags,
-                        summary_results.concepts,
-                        summary_results.entities,
-                        summary_results.summary,
-                        summary_results.model_dump()  # Convert Pydantic model to dict
-                    )
-                    if note is None:
-                        raise RuntimeError(f"Failed to create note for {message.id}")
+                    # note = await db_service.create_note(message.id,
+                    #     summary_results.title,
+                    #     str(note_path),
+                    #     summary_results.tags,
+                    #     summary_results.concepts,
+                    #     summary_results.entities,
+                    #     summary_results.summary,
+                    #     summary_results.model_dump()  # Convert Pydantic model to dict
+                    # )
+                    # if note is None:
+                    #     raise RuntimeError(f"Failed to create note for {message.id}")
                 
                 # update message status in database
                 success = await db_service.update_message(message.id, MessageStatus.COMPLETED, "", summary_results.language)

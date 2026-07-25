@@ -18,10 +18,9 @@ class RouterSummarizerService:
     async def summarize(
             self,
             channel: str,
-            message: str,
             category: str,
-            language: str = None,
-            specified_title: Optional[str] = None,
+            language: str,
+            message: str,
             metadata: Optional[Dict[str, Any]] = None
         ) -> Optional [SummarizerResult]:        
         """
@@ -29,11 +28,9 @@ class RouterSummarizerService:
 
         Args:
             channel: The channel to which the summary belongs
-            message: The incoming message
             category: The category of the note
             language: The language of the message
-            specified_title: The title of the note (if specified)
-            specified_category: The category of the note (if specified)
+            message: The message content
             metadata: Optional dictionary containing additional metadata for the note
 
         Returns:
@@ -50,28 +47,25 @@ class RouterSummarizerService:
         if is_youtube_url_message(message):
             return await self._youtube_processor.summarize(
                 channel=channel,
-                message=message,
                 category=category,
                 language=language,
-                specified_title=specified_title,
+                message=message,
                 metadata=metadata
             )
         elif is_pdf_message(message):
             return await self._pdf_processor.summarize(
                 channel=channel,
-                message=message,
                 category=category,
                 language=language,
-                specified_title=specified_title,
+                message=message,
                 metadata=metadata
             )
         
         return await self._text_processor.summarize(
-            channel=channel,
-            message=message,
-            category=category,
-            language=language,
-            specified_title=specified_title,
-            metadata=metadata
+                channel=channel,
+                category=category,
+                language=language,
+                message=message,
+                metadata=metadata
         )
 

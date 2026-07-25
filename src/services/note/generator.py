@@ -37,8 +37,6 @@ class GeneratorNoteService:
         if not self._setting.get_vault_path():
             return None 
 
-        title = processed_data.title if processed_data.title else "unknown_title"
-
         note_paths = []
         for formatter in self._formatters:
             self._logger.info(f"note formatter: {formatter.get_name()}")
@@ -57,11 +55,11 @@ class GeneratorNoteService:
             for note_path in note_paths:
                 
                 try:
-                    success = self._syncer.sync_note(note_path, title)
+                    success = self._syncer.sync_note(note_path, processed_data.title)
                     if success:
-                        self._logger.info(f"Successfully synced note to Git: {title}")
+                        self._logger.info(f"Successfully synced note to Git: {processed_data.title}")
                     else:
-                        self._logger.warning(f"Git sync failed for note: {title}")
+                        self._logger.warning(f"Git sync failed for note: {processed_data.title}")
                 except Exception as e:
                     self._logger.error(f"Error during Git sync: {e}", exc_info=True)
                 

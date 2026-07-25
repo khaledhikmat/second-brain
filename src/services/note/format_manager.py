@@ -72,21 +72,19 @@ class ObsidianFormatManager:
         if not self._setting.get_vault_path():
             return None 
 
-        title = processed_data.title if processed_data.title else "untitled_note"
-
         # Create safe filename
-        safe_filename = self._create_safe_filename(title)
+        safe_filename = _create_safe_filename(processed_data.title)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{timestamp}_{safe_filename}.md"
 
         # Determine the folder path
         formatter_folder = "obs"
         lang_folder = processed_data.language
-        category_folder = processed_data.category.lower().replace(" ", "_")
+        daily_folder = datetime.now().strftime("%Y%m%d")
 
         # Ensure vault_path is a Path object
         vault_path = Path(self._setting.get_vault_path())
-        note_dir = vault_path / formatter_folder / lang_folder / category_folder
+        note_dir = vault_path / formatter_folder / lang_folder / daily_folder
         note_dir.mkdir(parents=True, exist_ok=True)
 
         note_path = Path(note_dir / filename)
@@ -100,6 +98,10 @@ class ObsidianFormatManager:
 
         self._logger.info(f"Created note: {note_path}")
 
+        # Update index.md and log.md
+        _update_index_md(note_dir, processed_data.title, filename, processed_data.category, self._logger)
+        _update_log_md(note_dir, processed_data.title, filename, processed_data.category, self._logger)
+
         return note_path
 
     def _generate_note_content(self, data: SummarizerResult) -> str:
@@ -112,23 +114,22 @@ class ObsidianFormatManager:
         Returns:
             Complete note content as string
         """
-        category = data.category if data.category else "jot"
         channel = data.channel if data.channel else "telegram"
+        category = data.category if data.category else "jot"
 
         # Prepare simplified frontmatter
         frontmatter = {
-            "id": datetime.now().strftime("%Y%m%d%H%M%S"),
-            "category": category,
-            "title": data.title if data.title else "untitled",
-            "language": data.language if data.language else "en",
             "channel": channel,
+            "category": category,
+            "language": data.language if data.language else "en",
+            "title": data.title,
             "created": datetime.now().isoformat(),
             "processed_at": data.processedAt if data.processedAt else datetime.now().isoformat(),
         }
 
         # Add Metadata URL to frontmatter if present
         if data.metadata:
-            for key, val in data.metadata:
+            for key, val in data.metadata.items():
                 frontmatter[key] = val
 
         # Generate YAML frontmatter string
@@ -142,32 +143,13 @@ class ObsidianFormatManager:
         # Normalize context
         context = {
             "frontmatter": yaml_str.strip(),
-            "category": category,
-            "title": data.title if data.title else "untitled_note",
-            "language": data.language if data.language else "ar",
-            "channel": channel,
-            "created": datetime.now().isoformat(),
-            "summary": data.summary if data.summary else "",
-            "content": data.content if data.content else "",
-            "concepts": data.concepts if data.concepts else "",
-            "entities": data.entities if data.entities else {},
-            "original_text": data.content if data.content else "",
+            "message": data.message if data.message else "",
             "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         }
-
-        # Include metadata
-        if data.metadata:
-            for k, v in data.metadata:
-                context[k] = v
 
         # Render template
         template = self._env.get_template("obsidian.md.j2")
         return template.render(**context)
-
-    def _create_safe_filename(self, title: str) -> str:
-        """Create a safe filename from a title."""
-        # Use the safe_filename filter
-        return CUSTOM_FILTERS['safe_filename'](title)
 
 class OkfFormatManager:
     def __init__(self, setting: ISettingService, logger: ILoggerService):
@@ -208,21 +190,19 @@ class OkfFormatManager:
         if not self._setting.get_vault_path():
             return None
 
-        title = processed_data.title if processed_data.title else "untitled_note"
-
         # Create safe filename
-        safe_filename = self._create_safe_filename(title)
+        safe_filename = _create_safe_filename(processed_data.title)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{timestamp}_{safe_filename}.md"
 
         # Determine the folder path
         formatter_folder = "okf"
         lang_folder = processed_data.language
-        category_folder = processed_data.category.lower().replace(" ", "_")
+        daily_folder = datetime.now().strftime("%Y%m%d")
 
         # Ensure vault_path is a Path object
         vault_path = Path(self._setting.get_vault_path())
-        note_dir = vault_path / formatter_folder / lang_folder / category_folder
+        note_dir = vault_path / formatter_folder / lang_folder / daily_folder
         note_dir.mkdir(parents=True, exist_ok=True)
 
         note_path = Path(note_dir / filename)
@@ -236,6 +216,10 @@ class OkfFormatManager:
 
         self._logger.info(f"Created OKF note: {note_path}")
 
+        # Update index.md and log.md
+        _update_index_md(note_dir, processed_data.title, filename, processed_data.category, self._logger)
+        _update_log_md(note_dir, processed_data.title, filename, processed_data.category, self._logger)
+
         return note_path
 
     def _generate_note_content(self, data: SummarizerResult) -> str:
@@ -248,32 +232,168 @@ class OkfFormatManager:
         Returns:
             Complete note content as string
         """
-        # Prepare template context
-        context = {
-            "title": data.title if data.title else "untitled_note",
-            "channel": data.channel if data.channel else "http",
-            "category": data.category if data.category else "jot",
-            "language": data.language if data.language else "ar",
+        channel = data.channel if data.channel else "telegram"
+        category = data.category if data.category else "jot"
+
+        # Prepare simplified frontmatter
+        frontmatter = {
+            "channel": channel,
+            "type": category,
+            "language": data.language if data.language else "en",
+            "title": data.title,
             "created": datetime.now().isoformat(),
-            "summary": data.summary if data.summary else "",
-            "content": data.content if data.content else "",
-            "concepts": data.concepts if data.concepts else "",
-            "entities": data.entities if data.entities else {},
-            "original_text": data.content if data.content else "",
-            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "processed_at": data.processedAt if data.processedAt else datetime.now().isoformat(),
         }
 
-        # Include metadata
+        # Add Metadata URL to frontmatter if present
         if data.metadata:
-            for k, v in data.metadata:
-                context[k] = v
+            for key, val in data.metadata.items():
+                frontmatter[key] = val
+
+        # Generate YAML frontmatter string
+        yaml_str = yaml.dump(
+            frontmatter,
+            allow_unicode=True,
+            default_flow_style=False,
+            sort_keys=False
+        )
+
+        # Normalize context
+        context = {
+            "frontmatter": yaml_str.strip(),
+            "message": data.message if data.message else "",
+            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        }
 
         # Render template
         template = self._env.get_template("okf.md.j2")
         return template.render(**context)
 
-    def _create_safe_filename(self, title: str) -> str:
-        """Create a safe filename from a title."""
-        # Use the safe_filename filter
-        return CUSTOM_FILTERS['safe_filename'](title)
+## COMMON FUNCTIONS #
+
+def _create_safe_filename(title: str) -> str:
+    """Create a safe filename from a title."""
+    # Use the safe_filename filter
+    return CUSTOM_FILTERS['safe_filename'](title)
+
+def _update_index_md(note_dir: Path, title: str, filename: str, category: str, logger: ILoggerService) -> None:
+    """
+    Update or create index.md with categorized note links.
+
+    Args:
+        note_dir: Directory containing the notes
+        title: Note title
+        filename: Note filename
+        category: Note category
+        logger: Logger service
+    """
+    index_path = note_dir / "index.md"
+    category = category if category else "Uncategorized"
+    new_entry = f"- [{title}]({filename})"
+
+    if index_path.exists():
+        # Read existing content
+        with open(index_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Parse to find category sections
+        lines = content.split("\n")
+        category_found = False
+        insert_index = -1
+
+        for i, line in enumerate(lines):
+            if line.strip() == f"# {category}":
+                category_found = True
+                # Find where to insert (after the category header)
+                insert_index = i + 1
+                break
+
+        if category_found:
+            # Insert under existing category
+            lines.insert(insert_index, new_entry)
+        else:
+            # Add new category section at the end
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.append(f"# {category}")
+            lines.append("")
+            lines.append(new_entry)
+
+        content = "\n".join(lines)
+    else:
+        # Create new index.md
+        content = f"# {category}\n\n{new_entry}\n"
+
+    # Write back
+    with open(index_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    logger.info(f"Updated index.md: {index_path}")
+
+def _update_log_md(note_dir: Path, title: str, filename: str, category: str, logger: ILoggerService) -> None:
+    """
+    Update or create log.md with chronological creation entries.
+
+    Args:
+        note_dir: Directory containing the notes
+        title: Note title
+        filename: Note filename
+        category: Note category
+        logger: Logger service
+    """
+    log_path = note_dir / "log.md"
+    today = datetime.now().strftime("%Y-%m-%d")
+    new_entry = f"- **`{category}` Creation**: [{title}]({filename})"
+
+    if log_path.exists():
+        # Read existing content
+        with open(log_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Parse to find today's date section
+        lines = content.split("\n")
+        date_found = False
+        insert_index = -1
+
+        for i, line in enumerate(lines):
+            if line.strip() == f"## {today}":
+                date_found = True
+                # Insert after this date header
+                insert_index = i + 1
+                break
+
+        if date_found:
+            # Add under existing date section
+            lines.insert(insert_index, new_entry)
+        else:
+            # Add new date section at the top (after "# Creation Log")
+            # Find the header line
+            header_index = -1
+            for i, line in enumerate(lines):
+                if line.strip() == "# Creation Log":
+                    header_index = i
+                    break
+
+            if header_index != -1:
+                # Insert new date section after header
+                lines.insert(header_index + 1, "")
+                lines.insert(header_index + 2, f"## {today}")
+                lines.insert(header_index + 3, new_entry)
+            else:
+                # No header found, add at the beginning
+                lines.insert(0, "# Creation Log")
+                lines.insert(1, "")
+                lines.insert(2, f"## {today}")
+                lines.insert(3, new_entry)
+
+        content = "\n".join(lines)
+    else:
+        # Create new log.md
+        content = f"# Creation Log\n\n## {today}\n{new_entry}\n"
+
+    # Write back
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    logger.info(f"Updated log.md: {log_path}")
 

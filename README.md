@@ -29,6 +29,7 @@ psql -h localhost -p 5433 -U second_brain_user -d second_brain
 SELECT * FROM messages LIMIT 10;
 SELECT COUNT(*) FROM messages;
 SELECT processing_status, COUNT(*) FROM messages GROUP BY processing_status;
+UPDATE messages SET processing_status = 'queued';
 ```
 
 ### Common Database Operations
@@ -171,7 +172,7 @@ curl -X POST http://localhost:8080/api/v1/notes \
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/notes \
-  -H "X-API-Key: your_secret_key" \
+  -H "X-API-Key: adm\!n_6700" \
   -H "Content-Type: application/json" \
   -d '{"message": "يبدو ان الصراع التاريخيّ بين القوى البرية الكبرى والقوة البحرية الكبرى يدخل منعطفاً جديداً في هذه الأيام، وهو صراع تتحكم فيه معادلة العلاقة بين القوى الصاعدة والقوى السائدة . وأبرز مظاهر هذا الصراع اليوم هو الصعود المطرد للشرق الآسيوي - الأوراسي بقيادة الصين وحليفتها روسيا على حساب الغرب الأطلسي بقيادة الولايات المتحدة الأمريكية مع حلفائها الأوروبيين.", "category": "strategy"}'
 ```
@@ -180,18 +181,18 @@ curl -X POST http://localhost:8080/api/v1/notes \
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/notes \
-  -H "X-API-Key: your_secret_key" \
+  -H "X-API-Key: adm\!n_6700" \
   -H "Content-Type: application/json" \
-  -d '{"message": "https://youtube.com/watch?v=xxxxx", "category": "history", "language": "Arabic"}'
+  -d '{"message": "https://www.youtube.com/watch?v=t8pzVmW9RRE", "category": "strategy", "language": "arabic"}'
 ```
 
 **PDF via HTTP API:**
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/notes \
-  -H "X-API-Key: your_secret_key" \
+  -H "X-API-Key: adm\!n_6700" \
   -H "Content-Type: application/json" \
-  -d '{"message": "./book1.pdf", "category": "history", "language": "Arabic"}'
+  -d '{"message": "./book1.pdf", "category": "strategy", "language": "arabic"}'
 ```
 
 ## License
