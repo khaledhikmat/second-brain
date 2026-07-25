@@ -1,9 +1,8 @@
 import subprocess
 from pathlib import Path
-from typing import Optional
 
-from ..setting.typex import ISettingService
-from ..logger.typex import ILoggerService
+from services.setting.typex import ISettingService
+from services.logger.typex import ILoggerService
 
 class GitSyncerService:
     """Sync vault using Git."""
@@ -12,11 +11,10 @@ class GitSyncerService:
         self._logger = logger
 
         self.vault_path = self._setting.get_vault_path()
-        self.auto_commit = self._setting.get_auto_commit()
-        self.auto_push = self._setting.get_auto_push()
-        self.remote_name = self._setting.get_remote_name()
-        self.branch_name = self._setting.get_branch_name()
-        self.commit_message_template = self._setting.get_commit_message_template()
+        self.vault_remote_url = self._setting.get_vault_repo_url()
+        self.remote_name = self._setting.get_vault_remote_name()
+        self.branch_name = self._setting.get_vault_branch_name()
+        self.commit_message_template = self._setting.get_vault_commit_message_template()
         self._check_git_available()
 
     def sync_note(self, note_path: Path, note_title: str) -> bool:
@@ -31,6 +29,9 @@ class GitSyncerService:
             True if sync succeeded, False otherwise
         """
         try:
+            if not self.vault_path or not self.vault_remote_url or not self.remote_name or not self.branch_name:
+                return False
+
             # Get relative path for git add
             relative_path = note_path.relative_to(self.vault_path)
 
@@ -76,12 +77,16 @@ class GitSyncerService:
             return self._push_changes()
 
         except Exception as e:
-            self._logger.error(f"Git sync failed: {e}", exc_info=True)
+            self._logger.error(f"Git sync failed: {e}")
             return False
 
     def _check_git_available(self) -> bool:
         """Check if Git is available and vault is a Git repository."""
         try:
+            if self.vault_path is None or not self.vault_path.exists():
+                self._logger.warning("Vault path is not set or does not exist. Git sync will be disabled.")
+                return False
+            
             # Check if git command exists
             result = subprocess.run(
                 ["git", "--version"],
@@ -92,8 +97,7 @@ class GitSyncerService:
 
             if result.returncode != 0:
                 self._logger.warning("Git is not available. Auto-commit will be disabled.")
-                self.auto_commit = False
-                self.auto_push = False
+                self.vault_path = None
                 return False
 
             # Check if vault is a git repository
@@ -111,8 +115,7 @@ class GitSyncerService:
                     "Auto-commit will be disabled. "
                     "Run 'git init' in the vault directory to enable Git sync."
                 )
-                self.auto_commit = False
-                self.auto_push = False
+                self.vault_path = None
                 return False
 
             self._logger.info("Git is available and vault is a Git repository")
@@ -120,8 +123,7 @@ class GitSyncerService:
 
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
             self._logger.warning(f"Git check failed: {e}. Auto-commit will be disabled.")
-            self.auto_commit = False
-            self.auto_push = False
+            self.vault_path = None
             return False
 
     def _push_changes(self) -> bool:
@@ -152,7 +154,7 @@ class GitSyncerService:
             self._logger.error("Git push timed out after 30 seconds")
             return False
         except Exception as e:
-            self._logger.error(f"Git push failed: {e}", exc_info=True)
+            self._logger.error(f"Git push failed: {e}")
             return False
 
 

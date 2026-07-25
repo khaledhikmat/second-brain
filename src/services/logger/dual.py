@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from src.services.setting.typex import ISettingService
+from services.setting.typex import ISettingService
 
 class DualLoggerService:
     def __init__(self, setting: ISettingService):
@@ -11,7 +11,7 @@ class DualLoggerService:
             level=logging.DEBUG,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(self._setting.get_logs_path() / 'second_brain.log'),
+                logging.FileHandler(self._setting.get_logs_path() / 'app.log'),
                 logging.StreamHandler()
             ]
         )
@@ -22,6 +22,9 @@ class DualLoggerService:
 
     def info(self, message: str):
         self._logger.info(message)
+
+    def warning(self, message: str) -> None:
+        self._logger.warning(message)
 
     def error(self, message: str, exp: Exception = None):
         self._logger.error(message, exc_info=exp)

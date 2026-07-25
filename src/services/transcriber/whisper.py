@@ -7,8 +7,8 @@ import yt_dlp
 from pydub import AudioSegment
 from openai import OpenAI
 
-from src.services.setting.typex import ISettingService
-from src.services.logger.typex import ILoggerService
+from services.setting.typex import ISettingService
+from services.logger.typex import ILoggerService
 
 class WhisperTranscriberService:
     """Transcribe audio using OpenAI Whisper API."""
@@ -16,7 +16,7 @@ class WhisperTranscriberService:
     def __init__(self, setting: ISettingService, logger: ILoggerService):
         self._setting = setting
         self._logger = logger
-        self._client = OpenAI(api_key=self._setting.get_openai_api_key())
+        self._client = OpenAI(api_key=self._setting.get_transcriber_openai_api_key())
 
     def transcribe_youtube_video(self, youtube_url: str, language: Optional[str] = None) -> str:
         """
@@ -123,10 +123,10 @@ class WhisperTranscriberService:
                     "Try a different video or contact support to enable cookie authentication."
                 )
             else:
-                self._logger.error(f"Failed to download YouTube video: {e}", exc_info=True)
+                self._logger.error(f"Failed to download YouTube video: {e}")
                 raise RuntimeError(f"YouTube download failed: {e}")
         except Exception as e:
-            self._logger.error(f"Failed to transcribe YouTube video: {e}", exc_info=True)
+            self._logger.error(f"Failed to transcribe YouTube video: {e}")
             raise RuntimeError(f"YouTube transcription failed: {e}")
 
     def transcribe_audio_file(self, audio_path: Path, language: Optional[str] = None) -> str:
@@ -160,5 +160,5 @@ class WhisperTranscriberService:
             return transcript.text
 
         except Exception as e:
-            self._logger.error(f"Failed to transcribe audio file: {e}", exc_info=True)
+            self._logger.error(f"Failed to transcribe audio file: {e}")
             raise RuntimeError(f"Audio transcription failed: {e}")

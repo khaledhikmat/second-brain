@@ -1,0 +1,117 @@
+---
+{{ frontmatter }}
+---
+
+{% if category.lower() in ['poetry', 'sayings'] %}
+{# Simplified format for Poetry and Sayings categories #}
+{% if entities and entities.people %}
+## People
+
+{{ entities.people | wikilinks }}
+
+{% endif %}
+{% if original_text %}
+---
+
+## Original Text
+
+{{ original_text }}
+{% endif %}
+{% else %}
+{# Full format for other categories #}
+# {{ title or 'Untitled' }}
+
+{% if summary %}
+## Summary
+
+{{ summary }}
+
+{% endif %}
+## Content
+
+{{ content or '' }}
+
+{% if concepts %}
+## Key Concepts
+
+{{ concepts | mdlist }}
+
+{% endif %}
+{% if entities and (entities.people or entities.places or entities.terms) %}
+## Entities
+
+{% if entities.people %}
+### People
+
+{{ entities.people | wikilinks }}
+
+{% endif %}
+{% if entities.places %}
+### Places
+
+{{ entities.places | wikilinks }}
+
+{% endif %}
+{% if entities.terms %}
+### Terms
+
+{{ entities.terms | wikilinks }}
+
+{% endif %}
+{% endif %}
+{% if translations %}
+## Translations
+
+| Arabic | English |
+|--------|---------|
+{% for arabic, english in translations.items() %}
+| {{ arabic }} | {{ english }} |
+{% endfor %}
+
+{% endif %}
+{% if key_terms and key_terms is iterable and key_terms is not string %}
+## Key Terms
+
+| Term | Translation | Explanation |
+|------|-------------|-------------|
+{% for term_obj in key_terms %}
+{% if term_obj is mapping %}
+| {{ term_obj.get('term', '') | escape_pipe }} | {{ term_obj.get('translation', '') | escape_pipe }} | {{ term_obj.get('explanation', '') | escape_pipe }} |
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% if comparison_table and comparison_table is mapping and comparison_table.get('present') %}
+{% set headers = comparison_table.get('headers', []) %}
+{% set rows = comparison_table.get('rows', []) %}
+{% if headers and rows %}
+## Comparison Table
+
+**{{ comparison_table.get('caption', 'Comparison Table') }}**
+
+| {{ headers | map('string') | map('escape_pipe') | join(' | ') }} |
+|{{ '---|' * headers|length }}
+{% for row in rows %}
+{% if row is iterable and row is not string %}
+| {{ row | map('string') | map('escape_pipe') | join(' | ') }} |
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% endif %}
+{% if original_text %}
+---
+
+## Original Text
+
+{{ original_text }}
+
+{% endif %}
+{% endif %}
+---
+
+*Generated from {{ source }} on {{ timestamp }}*
+{% if url %}
+
+{{ url }}
+{% endif %}

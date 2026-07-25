@@ -1,19 +1,20 @@
 """
 HTTP handler implementation using FastAPI.
 """
-import datetime
+from datetime import datetime
 import secrets
-from typing import Optional, List
+from typing import Optional
 from fastapi import FastAPI, Request, HTTPException, Depends, status, Form, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeTimedSerializer, BadSignature
+import uvicorn
 
-from src.services.setting.typex import ISettingService
-from src.services.logger.typex import ILoggerService
-from src.services.data.typex import IDataService
-from src.channels.telegram.typex import ITelegramHandler
-from src.channels.http.typex import NoteRequest, NoteResponse
+from services.setting.typex import ISettingService
+from services.logger.typex import ILoggerService
+from services.data.typex import IDataService
+from channels.telegram.typex import ITelegramHandler
+from channels.http.typex import NoteRequest, NoteResponse
 
 class HttpHandler:
     """
@@ -41,10 +42,10 @@ class HttpHandler:
         self._logger = logger        
         self._db_service = db_service
         self._telegram_handler = telegram_handler
-        self.api_key = self._setting.get_api_key()
-        self.admin_username = self._setting.get_admin_username()
-        self.admin_password = self._setting.get_admin_password()
-        self.templates_dir = self._setting.get_templates_dir()
+        self.api_key = self._setting.get_http_api_key()
+        self.admin_username = self._setting.get_http_admin_username()
+        self.admin_password = self._setting.get_http_admin_password()
+        self.templates_dir = self._setting.get_http_templates_dir()
 
         # Session management
         self.secret_key = secrets.token_urlsafe(32)
@@ -64,17 +65,33 @@ class HttpHandler:
         # Register routes
         self._register_routes()
 
-    def get_app(self) -> FastAPI:
-        """Get the FastAPI application instance."""
-        return self.app
+    async def start(self) -> None:
+        """
+        Start the HTTP API server and wait until it stops.
+        """
+        host = self._setting.get_http_host()
+        port = self._setting.get_http_port()
+        self._logger.info(f"Starting HTTP API server on {host}:{port}")
 
-    async def initialize(self) -> None:
-        """Initialize the HTTP handler."""
-        self._logger.info("HTTP handler initialized")
+        config = uvicorn.Config(
+            self.app,
+            host=host,
+            port=port,
+            log_level="info"
+        )
+        self._server = uvicorn.Server(config)
 
-    async def shutdown(self) -> None:
-        """Cleanup when shutting down."""
-        self._logger.info("HTTP handler shutdown")
+        # Run the server (blocks until stopped)
+        await self._server.serve()
+
+    async def stop(self) -> None:
+        """
+        Stop the HTTP API server.
+        """
+        self._logger.info("Shutting down HTTP API server...")
+        if hasattr(self, '_server'):
+            self._server.should_exit = True
+        self._logger.info("HTTP API server stopped")
 
     # ========================================================================
     # Authentication Helpers
@@ -174,12 +191,14 @@ class HttpHandler:
                 # Build message text with category prefix if provided
                 message_text = request.message
                 category = request.category if request.category else "jot"
+                language = request.language if request.language else None
 
                 # Enqueue the message
                 created_message = await self._db_service.create_message(
                     raw_text=message_text,
                     category=category,
-                    channel="http"
+                    channel="http",
+                    language=language
                 )
 
                 return NoteResponse(
@@ -190,7 +209,7 @@ class HttpHandler:
                 )
 
             except Exception as e:
-                self._logger.error(f"Error creating note: {e}", exc_info=True)
+                self._logger.error(f"Error creating note: {e}")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Failed to create note: {str(e)}"

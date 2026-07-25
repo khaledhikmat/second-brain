@@ -6,6 +6,7 @@ class NoteRequest(BaseModel):
     """Request model for creating a note from text."""
     message: str = Field(..., description="The message text or URL to process")
     category: str = Field(None, description="Optional category override")
+    language: str = Field(None, description="Optional language override")
 
 class NoteResponse(BaseModel):
     """Response model for note operations."""
@@ -16,19 +17,10 @@ class NoteResponse(BaseModel):
 class IHttpHandler(Protocol):
     """Protocol defining the HTTP handler interface."""
 
-    def get_app(self) -> FastAPI:
-        """
-        Get the FastAPI application instance.
-
-        Returns:
-            The FastAPI application
-        """
+    async def start(self) -> None:
+        """Start the HTTP API server."""
         ...
 
-    async def initialize(self) -> None:
-        """Initialize the HTTP handler."""
-        ...
-
-    async def shutdown(self) -> None:
-        """Cleanup when shutting down."""
+    async def stop(self) -> None:
+        """Stop the HTTP API server."""
         ...

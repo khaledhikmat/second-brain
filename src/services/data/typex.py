@@ -1,7 +1,7 @@
 from typing import Protocol, Optional, List, Dict, Any
 
-from ..setting.typex import ISetting
-from ..logger.typex import ILogger
+from services.setting.typex import ISettingService
+from services.logger.typex import ILoggerService
 
 from datetime import datetime
 from sqlalchemy import (
@@ -42,8 +42,9 @@ class Message(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     user_id = Column(String(255), nullable=True)  # Telegram user ID or API client ID
-    source = Column(String(50), nullable=False, index=True)  # "telegram", "http", "batch"
-    source_message_id = Column(String(255), nullable=True)  # External message ID (e.g., Telegram message ID)
+    source = Column(String(50), nullable=True, index=True)  # "youtube, pdf, etc" (optional)
+    source_reference = Column(String(255), nullable=True)  # External message ID (e.g., YouTube URL, pdf file path)
+    channel = Column(String(50), nullable=True, index=True)  # Communication channel (e.g., "telegram", "http")
     category = Column(String(100), nullable=True, index=True)  # One of 8 predefined categories
     language = Column(String(10), nullable=True, index=True)  # "ar", "en", or detected language
     raw_text = Column(Text, nullable=False)  # Original message text
@@ -56,6 +57,8 @@ class Message(Base):
     worker_id = Column(String(100), nullable=True, index=True)  # Worker that claimed this message
     error_message = Column(Text, nullable=True)  # Error details if failed
     retry_count = Column(Integer, default=0)  # Number of processing attempts
+    queued_at = Column(DateTime, nullable=True)  # When the message was queued
+    processed_at = Column(DateTime, nullable=True)  # When the message was completed/failed
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -105,7 +108,7 @@ class ProcessedNote(Base):
 
 class IDataService(Protocol):
     """Protocol defining the database interface."""
-    def __init__(self, setting: ISetting, logger: ILogger):
+    def __init__(self, setting: ISettingService, logger: ILoggerService):
         """
         Initialize the database with settings and logger.
 
@@ -137,7 +140,7 @@ class IDataService(Protocol):
 
     async def finalize(self) -> bool:
         """
-        Finalize the database connection and create tables if they don't exist.
+        Finalize the database connection.
 
         Returns:
             True if finalization successful, False otherwise
@@ -150,7 +153,9 @@ class IDataService(Protocol):
             raw_text: str,
             category: str,
             channel: str,
-            language: Optional[str] = None
+            language: Optional[str] = None,
+            source: Optional[str] = None,
+            source_reference: Optional[str] = None
     ) -> Optional[Message]:
         """
         Create a new message in the database.
@@ -160,11 +165,14 @@ class IDataService(Protocol):
         """
         ...
 
-    async def update_message(self, message_id: int,
+    async def update_message(self, 
+        message_id: int,
         status: MessageStatus,
         error_message: Optional[str] = None,
-        category: Optional[str] = None,
-        language: Optional[str] = None) -> bool:
+        language: Optional[str] = None,
+        source: Optional[str] = None,
+        source_reference: Optional[str] = None
+    ) -> bool:
         """
         Update an existing message in the database by its ID.
 

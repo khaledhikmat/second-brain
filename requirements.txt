@@ -24,5 +24,5 @@ requests>=2.31.0  # For API integration
 python-multipart
 pytz==2024.1
 
-# experimental dependencies
+# gemini
 google-genai

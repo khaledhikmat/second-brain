@@ -7,9 +7,9 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 import pytz
 
-from src.services.setting.typex import ISettingService
-from src.services.logger.typex import ILoggerService
-from src.services.data.typex import IDataService
+from services.setting.typex import ISettingService
+from services.logger.typex import ILoggerService
+from services.data.typex import IDataService
 
 class TelegramHandler:
     """
@@ -178,7 +178,7 @@ class TelegramHandler:
             message = " ".join(context.args[1:])
 
             # Enqueue the message
-            created_message = await self._data_svc.create_message(
+            created_message = await self._db_service.create_message(
                 raw_text=message,
                 category=category,
                 channel="telegram"

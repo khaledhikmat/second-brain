@@ -1,11 +1,11 @@
 from typing import Any, Dict, Optional
 
-from src.helpers.utilities import is_arabic, is_english, is_text_message, is_youtube_url_messagae, is_pdf_message
+from helpers.utilities import is_arabic, is_english, is_text_message, is_youtube_url_message, is_pdf_message
 
-from src.services.setting.typex import ISettingService
-from src.services.logger.typex import ILoggerService
-from src.services.typex import SummarizerResult
-from src.services.summarizer.typex import ISummarizerService
+from services.setting.typex import ISettingService
+from services.logger.typex import ILoggerService
+from services.summarizer.typex import SummarizerResult
+from services.summarizer.typex import ISummarizerService
 
 class RouterSummarizerService:
     def __init__(self, setting: ISettingService, logger: ILoggerService, text_processor: ISummarizerService, youtube_processor: ISummarizerService, pdf_processor: ISummarizerService):
@@ -23,7 +23,7 @@ class RouterSummarizerService:
             language: str = None,
             specified_title: Optional[str] = None,
             metadata: Optional[Dict[str, Any]] = None
-        ) -> SummarizerResult:        
+        ) -> Optional [SummarizerResult]:        
         """
         Process an incoming message and create a note.
 
@@ -39,11 +39,15 @@ class RouterSummarizerService:
         Returns:
             SummarizerResult: A structured result containing the summary and metadata.
         """
+        if language is None and not is_text_message(message):
+            self._logger.warning(f"Language not specified for non-text message. Returning.")
+            return None
+        
         if language is None:
-            language = "Arabic" if is_arabic(actual_message) else "English"
+            language = "arabic" if is_arabic(message) else "english"
 
         # Route to different processors based on message type
-        if is_youtube_url_messagae(message):
+        if is_youtube_url_message(message):
             return await self._youtube_processor.summarize(
                 channel=channel,
                 message=message,

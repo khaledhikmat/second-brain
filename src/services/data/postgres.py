@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Protocol, Optional, List, Dict, Any
+import asyncio
 
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -8,9 +9,9 @@ from sqlalchemy import text
 from sqlalchemy import select, update, delete, func, and_, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.services.setting.typex import ISettingService
-from src.services.logger.typex import ILoggerService
-from typex import Base,  Message, ProcessedNote, MessageStatus
+from services.setting.typex import ISettingService
+from services.logger.typex import ILoggerService
+from services.data.typex import Base,  Message, ProcessedNote, MessageStatus
 
 class PostgresDataService:
     def __init__(self, setting: ISettingService, logger: ILoggerService):
@@ -49,14 +50,14 @@ class PostgresDataService:
             self._is_available = True
 
             # Test connection
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 await session.execute(text("SELECT 1"))
 
-            self._logger.info(f"Database initialized successfully: {self._mask_url(self.setting.get_database_url())}")
+            self._logger.info(f"Database initialized successfully: {self._mask_url(self._setting.get_database_url())}")
             return True
 
         except Exception as e:
-            self._logger.error(f"Failed to initialize database: {e}", exc_info=True)
+            self._logger.error(f"Failed to initialize database: {e}")
             self._is_available = False
             return False
 
@@ -71,26 +72,34 @@ class PostgresDataService:
             return False
 
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 await session.execute(text("SELECT 1"))
             return True
         except Exception as e:
             self._logger.error(f"Database health check failed: {e}")
-            self._is_database_available = False
+            self._is_available = False
             return False
 
     async def finalize(self):
         """Close database connections."""
         if self.engine:
-            await self.engine.dispose()
-            self._logger.info("Database connections closed")
+            try:
+                await self.engine.dispose()
+                self._logger.info("Database connections closed")
+            except asyncio.CancelledError:
+                # Suppress cancellation errors during shutdown
+                self._logger.debug("Database cleanup cancelled during shutdown")
+            except Exception as e:
+                self._logger.error(f"Error closing database connections: {e}")
 
     ## Message-related methods
-    async def create_message(self, 
+    async def create_message(self,
             raw_text: str,
             category: str,
             channel: str,
-            language: Optional[str] = None
+            language: Optional[str] = None,
+            source: Optional[str] = None,
+            source_reference: Optional[str] = None
         ) -> Optional[Message]:
         """
         Create a new message record.
@@ -99,33 +108,43 @@ class PostgresDataService:
             raw_text: Original message text
             category: Optional message category
             channel: Message channel ("telegram", "http")
+            source: Optional source of the message
+            source_reference: Optional reference to the source
             language: Optional detected language
 
         Returns:
             Created Message object or None if failed
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
+                now = datetime.utcnow()
                 message = Message(
                     raw_text=raw_text,
                     category=category,
+                    channel=channel, 
+                    source=source,  
+                    source_reference=source_reference,
                     language=language,
-                    timestamp=datetime.utcnow()
+                    timestamp=now,
+                    queued_at=now,  # Set queued_at when message is created
+                    processing_status=MessageStatus.QUEUED  # Default status
                 )
                 session.add(message)
                 await session.flush()  # Get the ID without committing
-                self._logger.debug(f"Created message record: id={message.id}, source={source}, status={processing_status}")
+                self._logger.debug(f"Created message record: id={message.id}, channel={channel}, status={message.processing_status}")
                 return message
         except Exception as e:
-            self._logger.error(f"Failed to create message: {e}", exc_info=True)
+            self._logger.error(f"Failed to create message: {e}")
             return None
 
-    async def update_message(self, 
+    async def update_message(self,
         message_id: int,
         status: MessageStatus,
         error_message: Optional[str] = None,
-        category: Optional[str] = None,
-        language: Optional[str] = None) -> bool:
+        language: Optional[str] = None,
+        source: Optional[str] = None,
+        source_reference: Optional[str] = None
+    ) -> bool:
         """
         Update message processing status.
 
@@ -133,22 +152,35 @@ class PostgresDataService:
             message_id: Message ID
             status: New status
             error_message: Optional error message if failed
-            category: Optional category (if detected during processing)
+            source: Optional source of the message
+            source_reference: Optional reference to the source
             language: Optional language (if detected during processing)
 
         Returns:
             True if update successful, False otherwise
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
+                now = datetime.utcnow()
                 update_data = {
                     "processing_status": status,
-                    "updated_at": datetime.utcnow()
+                    "updated_at": now
                 }
+
+                # Set processed_at when message reaches terminal state
+                if status in (MessageStatus.COMPLETED, MessageStatus.FAILED, MessageStatus.IGNORED):
+                    update_data["processed_at"] = now
+
+                # Set queued_at when message is queued
+                if status == MessageStatus.QUEUED:
+                    update_data["queued_at"] = now
+
                 if error_message:
                     update_data["error_message"] = error_message
-                if category:
-                    update_data["category"] = category
+                if source:
+                    update_data["source"] = source
+                if source_reference:
+                    update_data["source_reference"] = source_reference
                 if language:
                     update_data["language"] = language
 
@@ -167,7 +199,7 @@ class PostgresDataService:
                     self._logger.warning(f"No message found with id={message_id}")
                 return success
         except Exception as e:
-            self._logger.error(f"Failed to update message status: {e}", exc_info=True)
+            self._logger.error(f"Failed to update message status: {e}")
             return False
     
     async def increment_message_retry_count(self, message_id: int) -> bool:
@@ -178,7 +210,7 @@ class PostgresDataService:
             True if the retry count was incremented, False otherwise
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 stmt = (
                     update(Message)
                     .where(Message.id == message_id)
@@ -188,7 +220,7 @@ class PostgresDataService:
                 await session.flush()
                 return result.rowcount > 0
         except Exception as e:
-            self._logger.error(f"Failed to increment retry count: {e}", exc_info=True)
+            self._logger.error(f"Failed to increment retry count: {e}")
             return False
 
     async def get_message_by_id(self, message_id: int) -> Optional[Message]:
@@ -199,12 +231,12 @@ class PostgresDataService:
             The message if found, None otherwise
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 stmt = select(Message).where(Message.id == message_id)
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()
         except Exception as e:
-            self._logger.error(f"Failed to get message by id: {e}", exc_info=True)
+            self._logger.error(f"Failed to get message by id: {e}")
             return None
 
     async def get_messages_by_status(self, status: MessageStatus, limit: Optional[int] = None) -> List[Message]:
@@ -215,14 +247,14 @@ class PostgresDataService:
             A list of messages with the specified status
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 stmt = select(Message).where(Message.processing_status == status).order_by(Message.timestamp.desc())
                 if limit:
                     stmt = stmt.limit(limit)
                 result = await session.execute(stmt)
-                return list(result.scalars().all())
+                return List(result.scalars().all())
         except Exception as e:
-            self._logger.error(f"Failed to get messages by status: {e}", exc_info=True)
+            self._logger.error(f"Failed to get messages by status: {e}")
             return []
 
     async def get_failed_messages(self, max_retry_count: Optional[int] = None, limit: Optional[int] = None) -> List[Message]:
@@ -237,7 +269,7 @@ class PostgresDataService:
             List of failed messages
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 stmt = select(Message).where(Message.processing_status == MessageStatus.FAILED)
 
                 if max_retry_count is not None:
@@ -249,9 +281,9 @@ class PostgresDataService:
                     stmt = stmt.limit(limit)
 
                 result = await session.execute(stmt)
-                return list(result.scalars().all())
+                return List(result.scalars().all())
         except Exception as e:
-            self._logger.error(f"Failed to get failed messages: {e}", exc_info=True)
+            self._logger.error(f"Failed to get failed messages: {e}")
             return []
 
     async def get_queued_messages(self, limit: Optional[int] = None) -> List[Message]:
@@ -265,7 +297,7 @@ class PostgresDataService:
             List of queued messages
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 stmt = (
                     select(Message)
                     .where(Message.processing_status == MessageStatus.QUEUED)
@@ -275,9 +307,9 @@ class PostgresDataService:
                     stmt = stmt.limit(limit)
 
                 result = await session.execute(stmt)
-                return list(result.scalars().all())
+                return List(result.scalars().all())
         except Exception as e:
-            self._logger.error(f"Failed to get queued messages: {e}", exc_info=True)
+            self._logger.error(f"Failed to get queued messages: {e}")
             return []
 
     async def find_completed_message_by_youtube_url(self, youtube_url: str) -> Optional[Message]:
@@ -296,7 +328,7 @@ class PostgresDataService:
             Completed Message object if found, None otherwise
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 # Detect database type from connection URL
                 db_url = str(session.bind.url)
 
@@ -328,7 +360,7 @@ class PostgresDataService:
                     self._logger.debug(f"Found duplicate YouTube URL: {youtube_url} (message_id={message.id})")
                 return message
         except Exception as e:
-            self._logger.error(f"Failed to find completed message by YouTube URL: {e}", exc_info=True)
+            self._logger.error(f"Failed to find completed message by YouTube URL: {e}")
             return None
 
     async def dequeue_messages(self, limit: int, worker_id: str) -> List[Message]:
@@ -349,7 +381,7 @@ class PostgresDataService:
             List of claimed messages with status updated to PROCESSING
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 # Step 1: SELECT FOR UPDATE SKIP LOCKED to claim messages atomically
                 stmt = (
                     select(Message)
@@ -382,7 +414,7 @@ class PostgresDataService:
                 self._logger.info(f"Worker {worker_id} claimed {len(messages)} messages (PostgreSQL)")
                 return messages
         except Exception as e:
-            self._logger.error(f"Failed to dequeue messages (PostgreSQL): {e}", exc_info=True)
+            self._logger.error(f"Failed to dequeue messages (PostgreSQL): {e}")
             return []
 
     ## Processed Notes-related methods
@@ -413,7 +445,7 @@ class PostgresDataService:
             Created ProcessedNote object or None if failed
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 note = ProcessedNote(
                     message_id=message_id,
                     title=title,
@@ -436,12 +468,12 @@ class PostgresDataService:
     async def get_note_by_message_id(self, message_id: int) -> Optional[ProcessedNote]:
         """Get note by message ID."""
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 stmt = select(ProcessedNote).where(ProcessedNote.message_id == message_id)
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()
         except Exception as e:
-            self._logger.error(f"Failed to get note by message_id: {e}", exc_info=True)
+            self._logger.error(f"Failed to get note by message_id: {e}")
             return None
 
     ## Stats-related methods
@@ -453,7 +485,7 @@ class PostgresDataService:
             A dictionary mapping categories to their respective counts
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 stmt = (
                     select(Message.category, func.count(Message.id))
                     .where(Message.category.isnot(None))
@@ -462,7 +494,7 @@ class PostgresDataService:
                 result = await session.execute(stmt)
                 return {category: count for category, count in result.all()}
         except Exception as e:
-            self._logger.error(f"Failed to get category counts: {e}", exc_info=True)
+            self._logger.error(f"Failed to get category counts: {e}")
             return {}
 
     async def get_message_counts_by_language(self) -> Dict[str, int]:
@@ -473,7 +505,7 @@ class PostgresDataService:
             A dictionary mapping languages to their respective counts
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 stmt = (
                     select(Message.language, func.count(Message.id))
                     .where(Message.language.isnot(None))
@@ -482,7 +514,7 @@ class PostgresDataService:
                 result = await session.execute(stmt)
                 return {language: count for language, count in result.all()}
         except Exception as e:
-            self._logger.error(f"Failed to get language counts: {e}", exc_info=True)
+            self._logger.error(f"Failed to get language counts: {e}")
             return {}
 
     async def get_total_messages(self) -> int:
@@ -493,12 +525,12 @@ class PostgresDataService:
             The total count of messages
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 stmt = select(func.count(Message.id))
                 result = await session.execute(stmt)
                 return result.scalar() or 0
         except Exception as e:
-            self._logger.error(f"Failed to get total message count: {e}", exc_info=True)
+            self._logger.error(f"Failed to get total message count: {e}")
             return 0
 
     async def get_success_rate(self) -> float:
@@ -509,7 +541,7 @@ class PostgresDataService:
             The success rate as a float
         """
         try:
-            async with self.get_session() as session:
+            async with self._get_session() as session:
                 total_stmt = select(func.count(Message.id))
                 total_result = await session.execute(total_stmt)
                 total = total_result.scalar() or 0
@@ -526,25 +558,25 @@ class PostgresDataService:
 
                 return (success / total) * 100
         except Exception as e:
-            self._logger.error(f"Failed to calculate success rate: {e}", exc_info=True)
+            self._logger.error(f"Failed to calculate success rate: {e}")
             return 0.0
 
     #### PRIVATE METHODS ####
 
     @asynccontextmanager
-    async def _get_database_session(self):
+    async def _get_session(self):
         """
         Get a database session with automatic cleanup.
 
         Usage:
-            async with db_manager.get_session() as session:
+            async with db_manager._get_session() as session:
                 # Use session here
                 pass
 
         Yields:
             AsyncSession: Database session
         """
-        if not self._is_database_available or not self.session_factory:
+        if not self._is_available or not self.session_factory:
             raise RuntimeError("Database is not available")
 
         session = self.session_factory()
@@ -558,7 +590,7 @@ class PostgresDataService:
             await session.close()
 
     @asynccontextmanager
-    async def get_database_session_safe(self):
+    async def _get_session_safe(self):
         """
         Get a database session with graceful degradation.
 
@@ -567,7 +599,7 @@ class PostgresDataService:
         even if database writes fail.
 
         Usage:
-            async with db_manager.get_session_safe() as session:
+            async with db_manager._get_session_safe() as session:
                 if session:
                     # Use session here
                     pass
@@ -578,7 +610,7 @@ class PostgresDataService:
         Yields:
             Optional[AsyncSession]: Database session or None if unavailable
         """
-        if not self._is_database_available or not self.session_factory:
+        if not self._is_available or not self.session_factory:
             self._logger.warning("Database unavailable, operating in degraded mode")
             yield None
             return
@@ -589,7 +621,7 @@ class PostgresDataService:
             await session.commit()
         except Exception as e:
             await session.rollback()
-            self._logger.error(f"Database operation failed: {e}", exc_info=True)
+            self._logger.error(f"Database operation failed: {e}")
             # Don't re-raise - allow system to continue
         finally:
             await session.close()

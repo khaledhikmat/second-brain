@@ -15,7 +15,16 @@ def is_english(text: str) -> bool:
     """Check if text is primarily in English."""
     return _detect_language(text) == "en"
 
-def is_youtube_url(text: str) -> bool:
+def is_pdf_message(text: str) -> bool:
+    """
+    Check if text contains a PDF URL.
+
+    Args:
+        text: Text to check
+    """
+    return False
+
+def is_youtube_url_message(text: str) -> bool:
     """
     Check if text contains a YouTube URL.
 
@@ -37,6 +46,18 @@ def is_youtube_url(text: str) -> bool:
             return True
 
     return False
+
+def is_text_message(text: str) -> bool:
+    """
+    Check if the message is a text message (not a URL or file).
+
+    Args:
+        text: Text to check
+
+    Returns:
+        True if the message is a text message
+    """
+    return not (is_youtube_url_message(text) or is_pdf_message(text))
 
 def init_vault_from_remote(vault_path: Path, repo_url: str = None) -> bool:
     """
@@ -166,7 +187,7 @@ def _create_empty_vault(vault_path: Path) -> bool:
     """
     try:
         # Categories
-        categories = ["sayings", "poetry", "jots", "islam", "history", "strategy", "concepts", "path"]
+        categories = ["sayings", "poetry", "jots", "islam", "history", "strategy", "concepts", "future"]
 
         # Create language folders and categories
         for lang in ["arabic", "english"]:
@@ -231,6 +252,8 @@ def _detect_language(text: str) -> str:
         return "en"
 
     try:
+        if len(text) > 5000:
+            text = text[:5000]  # Limit to first 5000 characters for performance
         detected = detect(text)
 
         # Map to our supported languages

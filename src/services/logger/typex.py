@@ -21,6 +21,15 @@ class ILoggerService(Protocol):
         """
         ...
 
+    def warning(self, message: str) -> None:
+        """
+        Log an warning message.
+
+        Args:
+            message: The warning message to log
+        """
+        ...
+
     def error(self, message: str, exp: Exception = None) -> None:
         """
         Log an error message.
