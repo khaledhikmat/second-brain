@@ -1,5 +1,4 @@
-from typing import Any, Dict, Optional, List
-import yaml
+from typing import Optional, List
 from pathlib import Path
 from datetime import datetime
 import re
@@ -8,7 +7,7 @@ from services.setting.typex import ISettingService
 from services.logger.typex import ILoggerService
 from services.syncer.typex import ISyncerService
 from services.summarizer.typex import SummarizerResult
-from services.note.format_manager import IFormatManager, ObsidianFormatManager, OkfFormatManager
+from services.note.format_manager import IFormatManager, ObsidianFormatManager
 
 # Generator Note Service
 class GeneratorNoteService:

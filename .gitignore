@@ -44,6 +44,9 @@ vault/
 # Batch queue
 queue/
 
+# Uploads
+*.pdf
+
 # OS
 .DS_Store
 Thumbs.db

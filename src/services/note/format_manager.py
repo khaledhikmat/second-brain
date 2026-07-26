@@ -332,7 +332,7 @@ def _update_index_md(note_dir: Path, title: str, filename: str, category: str, l
 
 def _update_log_md(note_dir: Path, title: str, filename: str, category: str, logger: ILoggerService) -> None:
     """
-    Update or create log.md with chronological creation entries.
+    Update or create log.md with creation entries.
 
     Args:
         note_dir: Directory containing the notes
@@ -342,54 +342,39 @@ def _update_log_md(note_dir: Path, title: str, filename: str, category: str, log
         logger: Logger service
     """
     log_path = note_dir / "log.md"
-    today = datetime.now().strftime("%Y-%m-%d")
-    new_entry = f"- **`{category}` Creation**: [{title}]({filename})"
+    new_entry = f"- **`{category}` creation**: [{title}]({filename})"
 
     if log_path.exists():
         # Read existing content
         with open(log_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Parse to find today's date section
+        # Append new entry after the header
         lines = content.split("\n")
-        date_found = False
-        insert_index = -1
 
+        # Find the header line
+        header_index = -1
         for i, line in enumerate(lines):
-            if line.strip() == f"## {today}":
-                date_found = True
-                # Insert after this date header
-                insert_index = i + 1
+            if line.strip() == "# Creation Log":
+                header_index = i
                 break
 
-        if date_found:
-            # Add under existing date section
+        if header_index != -1:
+            # Insert after header (skip blank line if present)
+            insert_index = header_index + 1
+            if insert_index < len(lines) and lines[insert_index].strip() == "":
+                insert_index += 1
             lines.insert(insert_index, new_entry)
         else:
-            # Add new date section at the top (after "# Creation Log")
-            # Find the header line
-            header_index = -1
-            for i, line in enumerate(lines):
-                if line.strip() == "# Creation Log":
-                    header_index = i
-                    break
-
-            if header_index != -1:
-                # Insert new date section after header
-                lines.insert(header_index + 1, "")
-                lines.insert(header_index + 2, f"## {today}")
-                lines.insert(header_index + 3, new_entry)
-            else:
-                # No header found, add at the beginning
-                lines.insert(0, "# Creation Log")
-                lines.insert(1, "")
-                lines.insert(2, f"## {today}")
-                lines.insert(3, new_entry)
+            # No header found, add at the beginning
+            lines.insert(0, "# Creation Log")
+            lines.insert(1, "")
+            lines.insert(2, new_entry)
 
         content = "\n".join(lines)
     else:
         # Create new log.md
-        content = f"# Creation Log\n\n## {today}\n{new_entry}\n"
+        content = f"# Creation Log\n\n{new_entry}\n"
 
     # Write back
     with open(log_path, "w", encoding="utf-8") as f:

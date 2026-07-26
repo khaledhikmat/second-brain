@@ -192,7 +192,16 @@ curl -X POST http://localhost:8080/api/v1/notes \
 curl -X POST http://localhost:8080/api/v1/notes \
   -H "X-API-Key: adm\!n_6700" \
   -H "Content-Type: application/json" \
-  -d '{"message": "./book1.pdf", "category": "strategy", "language": "arabic"}'
+  -d '{"message": "https://www.somewhere.com/book.pdf", "category": "strategy", "language": "arabic"}'
+```
+
+**PDF Upload via HTTP API:**
+```bash
+curl -X POST "http://localhost:8080/api/v1/notes/pdf" \
+    -H "X-API-Key: adm\!n_6700" \
+    -F "file=@./docs/shanquiti-east-west.pdf" \
+    -F "category=strategy" \
+    -F "language=arabic"
 ```
 
 ## License

@@ -22,6 +22,9 @@ def is_pdf_message(text: str) -> bool:
     Args:
         text: Text to check
     """
+    if text.endswith('.pdf'):
+        return True
+
     return False
 
 def is_youtube_url_message(text: str) -> bool:

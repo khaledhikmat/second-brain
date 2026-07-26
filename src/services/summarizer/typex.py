@@ -53,10 +53,14 @@ Message Language:
 
     return prompt
 
-def produce_summarization_prompt(language: str) -> str:
+def produce_summarization_prompt(language: str, source: str) -> str:
+    summarization_type = f"Please read the attached {language} PDF document"
+    if source == "youtube":
+        summarization_type = f"Please analyze the Youtube video in {language}"
+
     prompt = f"""
     You are an expert knowledge curator for classical and professional {language} text synthesis.
-    Please read the attached {language} PDF document meticulously and generate an exhaustive, 
+    {summarization_type} meticulously and generate an exhaustive, 
     long-form structural summary written entirely in formal, professional {language}.
     
     Your output must strictly follow this detailed structure:

@@ -4,7 +4,8 @@ HTTP handler implementation using FastAPI.
 from datetime import datetime
 import secrets
 from typing import Optional
-from fastapi import FastAPI, Request, HTTPException, Depends, status, Form, Response
+from pathlib import Path
+from fastapi import FastAPI, Request, HTTPException, Depends, status, Form, Response, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeTimedSerializer, BadSignature
@@ -213,6 +214,81 @@ class HttpHandler:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Failed to create note: {str(e)}"
+                )
+
+        # PDF upload endpoint (API key required)
+        @self.app.post(
+            "/api/v1/notes/pdf",
+            response_model=NoteResponse,
+            responses={
+                401: {"model": NoteResponse},
+                500: {"model": NoteResponse}
+            },
+            tags=["Notes"]
+        )
+        async def upload_pdf(
+            file: UploadFile = File(...),
+            category: Optional[str] = Form(None),
+            language: Optional[str] = Form(None),
+            api_key: str = Depends(self._verify_api_key)
+        ):
+            """
+            Upload a PDF file for processing.
+
+            Accepts a PDF file and processes it with AI to create a structured note.
+            """
+            try:
+                # Validate file type
+                if not file.filename.endswith('.pdf'):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Only PDF files are supported"
+                    )
+
+                self._logger.info(f"Received PDF upload: {file.filename}")
+
+                # Create uploads directory if it doesn't exist
+                uploads_dir = Path(self._setting.get_vault_path()) / "uploads" / "pdfs"
+                uploads_dir.mkdir(parents=True, exist_ok=True)
+
+                # Generate unique filename with timestamp
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                safe_filename = f"{timestamp}_{file.filename}"
+                file_path = uploads_dir / safe_filename
+
+                # Save the uploaded file
+                with open(file_path, "wb") as f:
+                    content = await file.read()
+                    f.write(content)
+
+                self._logger.info(f"Saved PDF to: {file_path}")
+
+                # Set defaults
+                category = category if category else "jot"
+                language = language if language else None
+
+                # Enqueue the message with file path
+                created_message = await self._db_service.create_message(
+                    raw_text=str(file_path),
+                    category=category,
+                    channel="http",
+                    language=language
+                )
+
+                return NoteResponse(
+                    success=True,
+                    message=f"PDF '{file.filename}' uploaded and queued for processing",
+                    message_id=created_message.id,
+                    status="queued"
+                )
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                self._logger.error(f"Error uploading PDF: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to upload PDF: {str(e)}"
                 )
 
         # Dashboard endpoint (API key required)

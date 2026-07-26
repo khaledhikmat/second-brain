@@ -11,7 +11,7 @@ from google.genai import types
 from services.setting.typex import ISettingService
 from services.logger.typex import ILoggerService
 from services.transcriber.typex import ITranscriberService
-from services.summarizer.typex import ISummarizerService, SummarizerResult, produce_summarization_prompt, produce_title_prompt, process_response, create_fallback_structure
+from services.summarizer.typex import ISummarizerService, SummarizerResult, produce_summarization_prompt, process_response, create_fallback_structure
 
 class YoutubeSummarizerService:
     def __init__(self, setting: ISettingService, logger: ILoggerService, transcriber_service: ITranscriberService, text_summarizer_service: ISummarizerService):
@@ -65,10 +65,10 @@ class YoutubeSummarizerService:
                 # route to the text summarizer
                 return await self._text_summarizer_service.summarize(channel, category, language, transcript_text, metadata)
 
-            prompt = produce_summarization_prompt(language)
+            # Path B: No Transcript available. We must fall back to multimodal rules.
+            prompt = produce_summarization_prompt(language, "youtube")
             self._logger.debug(f"Youtube prompt: {prompt}")
 
-            # Path B: No Transcript available. We must fall back to multimodal rules.
             client = genai.Client()
             self._logger.info("➔ No transcript available. Evaluating video duration...")
             try:
@@ -98,8 +98,6 @@ class YoutubeSummarizerService:
             )
             
             # produce consistent titles across all sources
-            title_prompt = produce_title_prompt(language, response.text)
-            self._logger.debug(f"Youtube title prompt: {title_prompt}")
             title_summary = await self._text_summarizer_service.summarize(channel, category, language, response.text)
 
             return process_response(response.text,
