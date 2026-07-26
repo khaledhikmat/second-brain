@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.setting.typex import ISettingService
 from services.logger.typex import ILoggerService
-from services.data.typex import Base,  Message, ProcessedNote, MessageStatus
+from services.data.typex import Base, Message, MessageStatus
 
 class PostgresDataService:
     def __init__(self, setting: ISettingService, logger: ILoggerService):
@@ -312,57 +312,6 @@ class PostgresDataService:
             self._logger.error(f"Failed to get queued messages: {e}")
             return []
 
-    async def find_completed_message_by_youtube_url(self, youtube_url: str) -> Optional[Message]:
-        """
-        Find a completed message with the given YouTube URL.
-
-        Queries the ProcessedNote.processed_data JSON field for exact URL match.
-        Used for deduplication of YouTube URLs during batch processing.
-
-        Supports both PostgreSQL and SQLite with database-specific JSON query syntax.
-
-        Args:
-            youtube_url: The YouTube URL to search for (normalized format)
-
-        Returns:
-            Completed Message object if found, None otherwise
-        """
-        try:
-            async with self._get_session() as session:
-                # Detect database type from connection URL
-                db_url = str(session.bind.url)
-
-                # Build query with database-specific JSON syntax
-                if "postgresql" in db_url:
-                    # PostgreSQL: Use ->> operator (text extraction)
-                    # Use as_string() to extract JSON value as text
-                    json_condition = ProcessedNote.processed_data['url'].as_string() == youtube_url
-                else:
-                    # SQLite: Use json_extract function
-                    json_condition = func.json_extract(ProcessedNote.processed_data, '$.url') == youtube_url
-
-                # Join Message and ProcessedNote, query JSON field for URL
-                stmt = (
-                    select(Message)
-                    .join(ProcessedNote, Message.id == ProcessedNote.message_id)
-                    .where(
-                        and_(
-                            Message.processing_status == MessageStatus.COMPLETED,
-                            json_condition
-                        )
-                    )
-                )
-
-                result = await session.execute(stmt)
-                message = result.scalar_one_or_none()
-
-                if message:
-                    self._logger.debug(f"Found duplicate YouTube URL: {youtube_url} (message_id={message.id})")
-                return message
-        except Exception as e:
-            self._logger.error(f"Failed to find completed message by YouTube URL: {e}")
-            return None
-
     async def dequeue_messages(self, limit: int, worker_id: str) -> List[Message]:
         """
         Atomically dequeue messages with database-specific optimizations.
@@ -416,65 +365,6 @@ class PostgresDataService:
         except Exception as e:
             self._logger.error(f"Failed to dequeue messages (PostgreSQL): {e}")
             return []
-
-    ## Processed Notes-related methods
-    async def create_note(self, 
-            message_id: int, 
-            title: str,
-            file_path: str,
-            tags: Optional[List[str]] = None,
-            concepts: Optional[List[str]] = None,
-            entities: Optional[Dict[str, List[str]]] = None,
-            summary: Optional[str] = None,
-            processed_data: Optional[Dict[str, Any]] = None
-        ) -> Optional[ProcessedNote]:
-        """
-        Create a processed note record.
-
-        Args:
-            message_id: Associated message ID
-            title: Note title
-            file_path: Path to markdown file
-            tags: List of tags
-            concepts: List of concepts
-            entities: Dict of entity lists (people, places, terms)
-            summary: Note summary
-            processed_data: Full processed data structure
-
-        Returns:
-            Created ProcessedNote object or None if failed
-        """
-        try:
-            async with self._get_session() as session:
-                note = ProcessedNote(
-                    message_id=message_id,
-                    title=title,
-                    file_path=file_path,
-                    tags=tags,
-                    concepts=concepts,
-                    entities=entities,
-                    summary=summary,
-                    processed_data=processed_data,
-                    created_at=datetime.utcnow()
-                )
-                session.add(note)
-                await session.flush()
-                self._logger.debug(f"Created note record: id={note.id}, title={title}")
-                return note
-        except Exception as e:
-            self._logger.error(f"Failed to create note: {e}", exc_info=True)
-            return None
-
-    async def get_note_by_message_id(self, message_id: int) -> Optional[ProcessedNote]:
-        """Get note by message ID."""
-        try:
-            async with self._get_session() as session:
-                stmt = select(ProcessedNote).where(ProcessedNote.message_id == message_id)
-                result = await session.execute(stmt)
-                return result.scalar_one_or_none()
-        except Exception as e:
-            self._logger.error(f"Failed to get note by message_id: {e}")
-            return None
 
     ## Stats-related methods
     async def get_message_counts_by_category(self) -> Dict[str, int]:

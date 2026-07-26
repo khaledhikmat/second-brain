@@ -62,9 +62,6 @@ class Message(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
-    note = relationship("ProcessedNote", back_populates="message", uselist=False, cascade="all, delete-orphan")
-
     # Indexes
     __table_args__ = (
         Index("idx_message_status_timestamp", "processing_status", "timestamp"),
@@ -73,38 +70,6 @@ class Message(Base):
 
     def __repr__(self):
         return f"<Message(id={self.id}, status={self.processing_status}, category={self.category})>"
-
-
-class ProcessedNote(Base):
-    """
-    Successfully processed notes with extracted metadata.
-
-    Stores structured data extracted by Claude and the file path to the markdown note.
-    """
-    __tablename__ = "processed_notes"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    message_id = Column(Integer, ForeignKey("messages.id"), nullable=False, unique=True)
-    title = Column(String(500), nullable=False)
-    tags = Column(JSON, nullable=True)  # List of strings
-    concepts = Column(JSON, nullable=True)  # List of strings
-    entities = Column(JSON, nullable=True)  # Dict with people, places, terms lists
-    summary = Column(Text, nullable=True)  # 1-2 sentence summary
-    file_path = Column(String(1000), nullable=False, unique=True)  # Path to markdown file
-    processed_data = Column(JSON, nullable=True)  # Full processed data structure
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
-
-    # Relationships
-    message = relationship("Message", back_populates="note")
-
-    # Indexes
-    __table_args__ = (
-        Index("idx_note_title", "title"),
-        Index("idx_note_created_at", "created_at"),
-    )
-
-    def __repr__(self):
-        return f"<ProcessedNote(id={self.id}, title={self.title})>"
 
 class IDataService(Protocol):
     """Protocol defining the database interface."""
@@ -226,48 +191,12 @@ class IDataService(Protocol):
         """
         ...
 
-    async def find_completed_message_by_youtube_url(self, youtube_url: str) -> Optional[Message]:
-        """
-        Find a completed message by its YouTube URL.
-
-        Returns:
-            The message if found, None otherwise
-        """
-        ...
-
     async def dequeue_messages(self, limit: int, worker_id: str) -> List[Message]:
         """
         Atomically dequeue messages for processing.
 
         Returns:
             A list of messages to be processed
-        """
-        ...
-
-    ## Processed Notes-related methods
-    async def create_note(self, message_id: int, 
-            title: str,
-            file_path: str,
-            tags: Optional[List[str]] = None,
-            concepts: Optional[List[str]] = None,
-            entities: Optional[Dict[str, List[str]]] = None,
-            summary: Optional[str] = None,
-            processed_data: Optional[Dict[str, Any]] = None
-        ) -> Optional[ProcessedNote]:
-        """
-        Create a new processed note in the database.
-        
-        Returns:
-            The created processed note if successful, None otherwise
-        """
-        ...
-
-    async def get_note_by_message_id(self, message_id: int) -> Optional[ProcessedNote]:
-        """
-        Get a processed note by its associated message ID.
-
-        Returns:
-            The processed note if found, None otherwise
         """
         ...
 

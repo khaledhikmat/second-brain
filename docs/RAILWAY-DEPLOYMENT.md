@@ -914,8 +914,7 @@ Remove processing history from PostgreSQL:
 railway login
 railway link  # Select your project
 
-# Clear processed notes and messages tables
-railway run psql -c "DELETE FROM processed_notes;"
+# Clear messages table
 railway run psql -c "DELETE FROM messages;"
 
 # Verify clean state

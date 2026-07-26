@@ -20,7 +20,6 @@ psql -h localhost -p 5433 -U second_brain_user -d second_brain
 ```sql
 \dt                 -- List all tables
 \d messages         -- Describe messages table
-\d processed_notes  -- Describe processed_notes table
 \l                  -- List all databases
 \du                 -- List all users
 \q                  -- Quit

@@ -7,7 +7,7 @@ import uuid
 import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
-from typing import Optional, List
+from typing import List
 
 from services.setting.envars import EnvVarsSettingService
 from services.logger.dual import DualLoggerService
@@ -91,20 +91,6 @@ async def process_batch():
                 if note_paths is None:
                     raise RuntimeError(f"Failed to generate note for {message.id}")
 
-                # for note_path in note_paths:
-                    # create the note in the database
-                    # note = await db_service.create_note(message.id,
-                    #     summary_results.title,
-                    #     str(note_path),
-                    #     summary_results.tags,
-                    #     summary_results.concepts,
-                    #     summary_results.entities,
-                    #     summary_results.summary,
-                    #     summary_results.model_dump()  # Convert Pydantic model to dict
-                    # )
-                    # if note is None:
-                    #     raise RuntimeError(f"Failed to create note for {message.id}")
-                
                 # update message status in database
                 success = await db_service.update_message(message.id, MessageStatus.COMPLETED, "", summary_results.language)
                 if not success:
