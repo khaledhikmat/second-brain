@@ -124,7 +124,7 @@ python3 src/batch.py
 ### Step 6: Dashboard
 
 ```bash
-http://localhost:8080/dashboard
+http://localhost:8080/
 ```
 
 ## Telegram
