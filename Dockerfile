@@ -34,10 +34,12 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 # Ensure temp directory is available for audio processing
 ENV TMPDIR=/tmp
+# Add src directory to Python path so imports work correctly
+ENV PYTHONPATH=/app/src
 
 # Health check - verify application can import successfully
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import sys; from src.config import validate_config; sys.exit(0)"
+    CMD python -c "import sys; from services.setting.envars import EnvVarsSettingService; sys.exit(0)"
 
 # Run the application
-CMD ["python", "-m", "src.main"]
+CMD ["python", "-m", "main"]
