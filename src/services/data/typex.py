@@ -201,6 +201,15 @@ class IDataService(Protocol):
         ...
 
     ## Stats-related methods
+    async def get_message_counts_by_status(self) -> Dict[str, int]:
+        """
+        Get the count of messages by their processing status.
+
+        Returns:
+            A dictionary mapping status values to their respective counts
+        """
+        ...
+
     async def get_message_counts_by_category(self) -> Dict[str, int]:
         """
         Get the count of messages by their category.

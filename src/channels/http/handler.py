@@ -1,7 +1,7 @@
 """
 HTTP handler implementation using FastAPI.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 import secrets
 from typing import Optional
 from pathlib import Path
@@ -297,8 +297,9 @@ class HttpHandler:
         async def login_page(request: Request):
             """Serve the login page."""
             return self.templates.TemplateResponse(
-                "login.html",
-                {"request": request, "error": None}
+                request=request,
+                name="login.html",
+                context={"error": None}
             )
 
         # Login form handler
@@ -327,11 +328,9 @@ class HttpHandler:
             else:
                 # Invalid credentials
                 return self.templates.TemplateResponse(
-                    "login.html",
-                    {
-                        "request": request,
-                        "error": "Invalid username or password"
-                    },
+                    request=request,
+                    name="login.html",
+                    context={"error": "Invalid username or password"},
                     status_code=status.HTTP_401_UNAUTHORIZED
                 )
 
@@ -346,12 +345,12 @@ class HttpHandler:
         # Stats cards endpoint for HTMX refresh
         @self.app.get("/api/stats-cards", response_class=HTMLResponse)
         async def stats_cards(
-            request: Request,
-            _: str = Depends(self._get_current_user)
+            _request: Request,
+            _user: str = Depends(self._get_current_user)
         ):
             """Return just the stats cards HTML for HTMX refresh."""
             try:
-                stats = await self.db_service.get_stats()
+                stats = await self._db_service.get_stats()
 
                 stats_html = f"""
             <div class="stat-card teams">
@@ -453,7 +452,7 @@ class HttpHandler:
                             "by_category": by_category,
                             "by_language": by_language,
                             "success_rate_percent": success_rate,
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.now(timezone.utc).isoformat()
                         },
                         "categories": categories,
                         "queue": queue_data
@@ -464,4 +463,67 @@ class HttpHandler:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to load dashboard"
+                )
+
+        # Dashboard refresh endpoint for HTMX (requires session auth)
+        @self.app.get("/dashboard/refresh", response_class=HTMLResponse)
+        async def dashboard_refresh(
+            request: Request,
+            _: str = Depends(self._get_current_user)
+        ):
+            """Return dashboard content for HTMX refresh."""
+            try:
+                # Summary
+                total = await self._db_service.get_total_messages()
+                by_status = await self._db_service.get_message_counts_by_status()
+                by_category = await self._db_service.get_message_counts_by_category()
+                by_language = await self._db_service.get_message_counts_by_language()
+                success_rate = await self._db_service.get_success_rate()
+
+                # Queue
+                queued_messages = await self._db_service.get_queued_messages(limit=10)
+
+                # Categories with percentages
+                categories = {}
+                for cat, count in by_category.items():
+                    categories[cat] = {
+                        "count": count,
+                        "percentage": round((count / total * 100) if total > 0 else 0, 1)
+                    }
+
+                # Queue data
+                queue_data = {
+                    "queued_count": by_status.get("queued", 0),
+                    "queue": [
+                        {
+                            "id": msg.id,
+                            "timestamp": msg.timestamp,
+                            "status": msg.processing_status.value,
+                            "text_preview": msg.raw_text[:100] if msg.raw_text else ""
+                        }
+                        for msg in queued_messages
+                    ]
+                }
+
+                return self.templates.TemplateResponse(
+                    request=request,
+                    name="dashboard_content.html",
+                    context={
+                        "summary": {
+                            "total_messages": total,
+                            "by_status": by_status,
+                            "by_category": by_category,
+                            "by_language": by_language,
+                            "success_rate_percent": success_rate,
+                            "timestamp": datetime.now(timezone.utc).isoformat()
+                        },
+                        "categories": categories,
+                        "queue": queue_data
+                    }
+                )
+            except Exception as e:
+                self._logger.error(f"Error refreshing dashboard: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to refresh dashboard"
                 )

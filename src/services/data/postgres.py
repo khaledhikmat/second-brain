@@ -252,7 +252,7 @@ class PostgresDataService:
                 if limit:
                     stmt = stmt.limit(limit)
                 result = await session.execute(stmt)
-                return List(result.scalars().all())
+                return list(result.scalars().all())
         except Exception as e:
             self._logger.error(f"Failed to get messages by status: {e}")
             return []
@@ -281,7 +281,7 @@ class PostgresDataService:
                     stmt = stmt.limit(limit)
 
                 result = await session.execute(stmt)
-                return List(result.scalars().all())
+                return list(result.scalars().all())
         except Exception as e:
             self._logger.error(f"Failed to get failed messages: {e}")
             return []
@@ -307,7 +307,7 @@ class PostgresDataService:
                     stmt = stmt.limit(limit)
 
                 result = await session.execute(stmt)
-                return List(result.scalars().all())
+                return list(result.scalars().all())
         except Exception as e:
             self._logger.error(f"Failed to get queued messages: {e}")
             return []
@@ -367,6 +367,25 @@ class PostgresDataService:
             return []
 
     ## Stats-related methods
+    async def get_message_counts_by_status(self) -> Dict[str, int]:
+        """
+        Get the count of messages by their processing status.
+
+        Returns:
+            A dictionary mapping status values to their respective counts
+        """
+        try:
+            async with self._get_session() as session:
+                stmt = (
+                    select(Message.processing_status, func.count(Message.id))
+                    .group_by(Message.processing_status)
+                )
+                result = await session.execute(stmt)
+                return {status.value: count for status, count in result.all()}
+        except Exception as e:
+            self._logger.error(f"Failed to get status counts: {e}")
+            return {}
+
     async def get_message_counts_by_category(self) -> Dict[str, int]:
         """
         Get the count of messages by their category.
