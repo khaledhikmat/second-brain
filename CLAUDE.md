@@ -151,11 +151,6 @@ Required environment variables (see `.env.example`):
 - Stores: raw_text, source, user_id, category, language, error_message
 - Worker ID for distributed processing
 
-**processed_notes table**:
-- Links to messages
-- Stores: title, file_path, tags, concepts, entities, summary
-- Full processed_data JSON
-
 ## Known Areas for Improvement
 
 ### Potential Enhancements

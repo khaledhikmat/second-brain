@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: second-brain-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: second_brain
+      POSTGRES_USER: second_brain_user
+      POSTGRES_PASSWORD: second_brain_password
+    ports:
+      - "5433:5432"  # Use external port 5433 to avoid conflict with local PostgreSQL
+    volumes:
+      # Persist database data
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U second_brain_user -d second_brain"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
