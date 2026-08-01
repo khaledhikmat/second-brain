@@ -160,6 +160,15 @@ class EnvVarsSettingService:
         """
         return os.getenv("TRANSCRIBER_OPENAI_API_KEY", "")
 
+    def get_transcriber_supadata_api_key(self) -> str:
+        """
+        Get the Supadata API key for YouTube transcript fetching.
+
+        Returns:
+            The Supadata API key
+        """
+        return os.getenv("TRANSCRIBER_SUPADATA_API_KEY", "")
+
     ## vault
     def get_vault_path(self) -> Path:
         """

@@ -19,6 +19,7 @@ from services.summarizer.text import GeminiTextSummarizerService
 from services.summarizer.youtube import YoutubeSummarizerService
 from services.summarizer.router import RouterSummarizerService
 from services.transcriber.whisper import WhisperTranscriberService
+from services.transcriber.supadata import SupadataTranscriberService
 from services.note.generator import GeneratorNoteService
 from services.note.format_manager import IFormatManager, ObsidianFormatManager, OkfFormatManager
 
@@ -55,8 +56,8 @@ async def process_batch():
 
         logger_service.info(f"Processing {len(messages)} messages...")
 
-        # Transcriber Service
-        transcriber_service = WhisperTranscriberService(settings_service, logger_service)
+        # Transcriber Service (Supadata for YouTube; Whisper available for audio files)
+        transcriber_service = SupadataTranscriberService(settings_service, logger_service)
 
         # Summarizer Services
         text_summarizer_service = GeminiTextSummarizerService(settings_service, logger_service)
@@ -79,11 +80,19 @@ async def process_batch():
             try:
                 logger_service.info(f"Processing message ID: {message.id} - language: {message.language} - category: {message.category}")
 
+                start_time = datetime.now()
+
                 # summarize message
                 summary_results = await router_summarizer_service.summarize(message.channel, message.category, message.language, message.raw_text)
                 if summary_results is None:
                     logger_service.error(f"Failed to summarize message {message.id}")
                     raise ValueError(f"Failed to summarize message {message.id}")
+
+                # add processing time to metadata
+                if summary_results.metadata is None:
+                    summary_results.metadata = {}
+                processing_secs = round((datetime.now() - start_time).total_seconds(), 2)
+                summary_results.metadata["proc_duration"] = f"{processing_secs} seconds"
 
                 # generate note
                 note_paths = await note_service.generate_note(summary_results, message.id)
