@@ -11,6 +11,7 @@ from services.setting.envars import EnvVarsSettingService
 from services.logger.dual import DualLoggerService
 from services.data.postgres import PostgresDataService
 from services.data.typex import MessageStatus
+from services.storage.r2 import R2StorageService
 from channels.http.handler import HttpHandler
 from channels.telegram.handler import TelegramHandler
 
@@ -37,7 +38,8 @@ async def main():
 
         # Initialize HTTP handler
         logger_service.info("Initializing HTTP API handler...")
-        http_handler = HttpHandler(settings_service, logger_service, db_service, telegram_handler)
+        r2_service = R2StorageService(settings_service, logger_service)
+        http_handler = HttpHandler(settings_service, logger_service, db_service, telegram_handler, storage_service=r2_service)
 
         # Start HTTP server (blocks until server stops)
         await http_handler.start()

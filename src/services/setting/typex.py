@@ -246,6 +246,19 @@ class ISettingService(Protocol):
         """
         ...
 
+    ## storage
+    def get_r2_account_id(self) -> str:
+        ...
+
+    def get_r2_access_key_id(self) -> str:
+        ...
+
+    def get_r2_secret_access_key(self) -> str:
+        ...
+
+    def get_r2_bucket_name(self) -> str:
+        ...
+
     ## batch processing
     def get_batch_size(self) -> int:
         """

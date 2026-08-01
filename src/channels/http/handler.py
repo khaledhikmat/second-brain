@@ -29,6 +29,7 @@ class HttpHandler:
         logger: ILoggerService,
         db_service: IDataService,
         telegram_handler: ITelegramHandler,
+        storage_service=None,
         lifespan=None
     ):
         """
@@ -43,6 +44,7 @@ class HttpHandler:
         self._logger = logger        
         self._db_service = db_service
         self._telegram_handler = telegram_handler
+        self._r2_service = storage_service
         self.api_key = self._setting.get_http_api_key()
         self.admin_username = self._setting.get_http_admin_username()
         self.admin_password = self._setting.get_http_admin_password()
@@ -247,21 +249,25 @@ class HttpHandler:
 
                 self._logger.info(f"Received PDF upload: {file.filename}")
 
-                # Create uploads directory if it doesn't exist
-                uploads_dir = Path(self._setting.get_vault_path()) / "uploads" / "pdfs"
-                uploads_dir.mkdir(parents=True, exist_ok=True)
-
                 # Generate unique filename with timestamp
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 safe_filename = f"{timestamp}_{file.filename}"
-                file_path = uploads_dir / safe_filename
+                content = await file.read()
 
-                # Save the uploaded file
-                with open(file_path, "wb") as f:
-                    content = await file.read()
-                    f.write(content)
-
-                self._logger.info(f"Saved PDF to: {file_path}")
+                if self._r2_service and self._r2_service.is_configured():
+                    # Upload to R2 so the batch processor (separate container) can access it
+                    r2_key = f"pdfs/{safe_filename}"
+                    self._r2_service.upload(content, r2_key)
+                    raw_text = f"r2://{r2_key}"
+                    self._logger.info(f"Uploaded PDF to R2: {r2_key}")
+                else:
+                    uploads_dir = Path(self._setting.get_vault_path()) / "uploads" / "pdfs"
+                    uploads_dir.mkdir(parents=True, exist_ok=True)
+                    file_path = uploads_dir / safe_filename
+                    with open(file_path, "wb") as f:
+                        f.write(content)
+                    raw_text = str(file_path)
+                    self._logger.info(f"Saved PDF to: {file_path}")
 
                 # Set defaults
                 category = category if category else "jot"
@@ -269,7 +275,7 @@ class HttpHandler:
 
                 # Enqueue the message with file path
                 created_message = await self._db_service.create_message(
-                    raw_text=str(file_path),
+                    raw_text=raw_text,
                     category=category,
                     channel="http",
                     language=language
