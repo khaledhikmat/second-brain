@@ -191,6 +191,15 @@ class ISettingService(Protocol):
         """
         ...
 
+    def get_transcriber_supadata_api_key(self) -> str:
+        """
+        Get the Supadata API key for YouTube transcript fetching.
+
+        Returns:
+            The Supadata API key
+        """
+        ...
+
     ## vault
     def get_vault_path(self) -> Path:
         """
