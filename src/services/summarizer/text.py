@@ -55,8 +55,8 @@ class GeminiTextSummarizerService:
             )
             title = response.text
 
-            # must suumarize if the message is a transcript
-            if metadata["mode"]:
+            # must summarize if the message is a transcript
+            if metadata and metadata["mode"]:
                 transcript_prompt = produce_summarization_prompt(language, "transcript", message) 
                 payload = f"{transcript_prompt}"
                 response = client.models.generate_content(
