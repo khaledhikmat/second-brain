@@ -53,10 +53,12 @@ Message Language:
 
     return prompt
 
-def produce_summarization_prompt(language: str, source: str) -> str:
+def produce_summarization_prompt(language: str, source: str, message: str = None) -> str:
     summarization_type = f"Please read the attached {language} PDF document"
     if source == "youtube":
         summarization_type = f"Please analyze the Youtube video in {language}"
+    if source == "transcript":
+        summarization_type = f"Please analyze the attached {language} transcript"
 
     prompt = f"""
     You are an expert knowledge curator for classical and professional {language} text synthesis.
@@ -88,6 +90,15 @@ def produce_summarization_prompt(language: str, source: str) -> str:
        as explicitly detailed in the closing portions of the document.
        
     Ensure your analysis is deeply rooted in the text without inserting external commentary or outside assumptions.
+"""
+
+    if source == "transcript" and message:
+        prompt += f"""
+Transcript Text:
+{message}
+
+Transcript Language:
+{language}
 """
 
     return prompt

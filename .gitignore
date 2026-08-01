@@ -16,6 +16,7 @@ ENV/
 build/
 develop-eggs/
 dist/
+youtube-urls/
 downloads/
 eggs/
 .eggs/

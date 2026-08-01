@@ -4,9 +4,11 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (git for vault sync)
+# Install system dependencies
+# - git: for vault sync
+# - ffmpeg: for Whisper transcription (yt-dlp + pydub audio processing)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
+    apt-get install -y --no-install-recommends git ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching

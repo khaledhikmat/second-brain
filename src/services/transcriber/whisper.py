@@ -105,10 +105,21 @@ class WhisperTranscriberService:
 
                         # Add language if specified
                         if language:
-                            transcribe_params["language"] = language
+                            # Validate language is a 2-letter ISO-639-1 code
+                            if len(language) == 2:
+                                transcribe_params["language"] = language
+                            else:
+                                self._logger.warning(f"Invalid language code '{language}', letting Whisper auto-detect")
 
-                        transcript = self._client.audio.transcriptions.create(**transcribe_params)
-                        full_transcript += transcript.text + "\n"
+                        try:
+                            transcript = self._client.audio.transcriptions.create(**transcribe_params)
+                            full_transcript += transcript.text + "\n"
+                        except Exception as transcribe_error:
+                            self._logger.error(f"OpenAI transcription failed for chunk {idx}/{len(chunks)}: {transcribe_error}")
+                            # Get file size for debugging
+                            chunk_size_mb = os.path.getsize(chunk_file) / (1024 * 1024)
+                            self._logger.error(f"Chunk file size: {chunk_size_mb:.2f} MB, params: {transcribe_params}")
+                            raise
 
                 self._logger.info(f"✓ Transcription completed ({len(full_transcript)} chars)")
                 return full_transcript.strip()

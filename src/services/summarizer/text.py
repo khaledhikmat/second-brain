@@ -6,7 +6,7 @@ from google.genai import types
 
 from services.setting.typex import ISettingService
 from services.logger.typex import ILoggerService
-from services.summarizer.typex import SummarizerResult, produce_title_prompt, process_response, create_fallback_structure
+from services.summarizer.typex import SummarizerResult, produce_summarization_prompt, produce_title_prompt, process_response, create_fallback_structure
 
 class GeminiTextSummarizerService:
     def __init__(self, setting: ISettingService, logger: ILoggerService):
@@ -44,17 +44,26 @@ class GeminiTextSummarizerService:
 
         self._logger.info(f"Processing message length {len(message)} using {llm_model}")
 
-        prompt = produce_title_prompt(language, message)
-        self._logger.debug(f"Title prompt: {prompt}")
-
         try:
+            title_prompt = produce_title_prompt(language, message)
+
             client = genai.Client()
-            payload = f"{prompt}"
+            payload = f"{title_prompt}"
             response = client.models.generate_content(
                 model=llm_model,
                 contents=[payload]
             )
             title = response.text
+
+            # must suumarize if the message is a transcript
+            if metadata["mode"]:
+                transcript_prompt = produce_summarization_prompt(language, "transcript", message) 
+                payload = f"{transcript_prompt}"
+                response = client.models.generate_content(
+                    model=llm_model,
+                    contents=[payload]
+                )
+                message = response.text
 
             return process_response(message,
                 title,

@@ -68,7 +68,7 @@ class ObsidianFormatManager:
         Returns:
             Note path
         """
-        self._logger.info(f"Obsidian note: summary result {processed_data}")
+        self._logger.info(f"Obsidian note: summary result - category: {processed_data.category} - channel: {processed_data.channel} - title: {processed_data.title}")
         if not self._setting.get_vault_path():
             return None 
 
@@ -186,7 +186,7 @@ class OkfFormatManager:
         Returns:
             Note path if successful
         """
-        self._logger.info(f"OKF note: summary result {processed_data}")
+        self._logger.info(f"OKF note: summary result - category: {processed_data.category} - channel: {processed_data.channel} - title: {processed_data.title}")
         if not self._setting.get_vault_path():
             return None
 
