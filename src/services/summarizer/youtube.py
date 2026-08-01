@@ -27,7 +27,7 @@ class YoutubeSummarizerService:
             language: str,
             message: str,
             metadata: Optional[Dict[str, Any]] = None
-        ) -> Optional [SummarizerResult]:        
+        ) -> Optional [SummarizerResult]:
         """
         Process an incoming message and create a summary.
 
@@ -46,6 +46,10 @@ class YoutubeSummarizerService:
             url = message.strip()
             self._logger.info(f"Analyzing video: {url}")
             video_id = self._extract_video_id(url)
+
+            # Normalize URL to standard YouTube format for Gemini API
+            normalized_url = f"https://www.youtube.com/watch?v={video_id}"
+            self._logger.info(f"Normalized URL: {normalized_url}")
             
             metadata = {
                 "source": "youtube",
@@ -53,59 +57,102 @@ class YoutubeSummarizerService:
             }
 
             # Path A: Check for Text Transcripts first
-            self._logger.info("➔ Evaluating video transcripts...")
+            self._logger.info("━━━ PATH A: YouTube Transcript API ━━━")
             transcript_text = self._fetch_transcript_text(video_id)
-            
-            self._logger.info(f"➔ Produced video transcripts: {len(transcript_text) if transcript_text else 0} characters")
-            if transcript_text and self._text_summarizer_service is None:
-                self._logger.error(f"Text summarizer is not available.")
-                return create_fallback_structure(message, language, channel, category)
 
-            if transcript_text and self._text_summarizer_service is not None:
-                # route to the text summarizer
+            if transcript_text:
+                self._logger.info(f"✓ Path A succeeded: Transcript available ({len(transcript_text)} chars)")
+                if self._text_summarizer_service is None:
+                    self._logger.error("Text summarizer is not available.")
+                    return create_fallback_structure(message, language, channel, category)
+
+                metadata["mode"] = "transcript" 
+
+                # Route to text summarizer
+                self._logger.info("➔ Routing transcript to text summarizer...")
                 return await self._text_summarizer_service.summarize(channel, category, language, transcript_text, metadata)
-
-            # Path B: No Transcript available. We must fall back to multimodal rules.
-            prompt = produce_summarization_prompt(language, "youtube")
-            self._logger.debug(f"Youtube prompt: {prompt}")
-
-            client = genai.Client()
-            self._logger.info("➔ No transcript available. Evaluating video duration...")
-            try:
-                duration_seconds = self._get_video_duration(client, url)
-                duration_hours = duration_seconds / 3600
-                self._logger.info(f"   Estimated Video Length: {duration_hours:.2f} hours")
-            except Exception as e:
-                self._logger.error(f"Routing Error: Failed to evaluate video duration. Details: {e}")
-                return create_fallback_structure(message, language, channel, category)
-
-            self._logger.info(f"Video duration: {duration_hours}")
-            # Enforce duration guardrails
-            gemini_model = self._setting.get_summarization_model() 
-            if duration_hours <= 1.0:
-                gemini_model = self._setting.get_summarization_model() 
-            elif duration_hours > 1.0 and duration_hours <= 2.0:
-                gemini_model = self._setting.get_summarization_advanced_model() 
             else:
-                self._logger.error(f"Execution Failed: Video is {duration_hours:.2f} hours long with no available text transcript.")
-                return create_fallback_structure(message, language, channel, category)
+                self._logger.info("✗ Path A failed: No transcript available, trying fallback paths...")
 
-            self._logger.info(f"➔ Routing multimodal payload to {gemini_model}...")
-            video_part = types.Part.from_uri(file_uri=url, mime_type="video/mp4")
-            response = client.models.generate_content(
-                model=gemini_model,
-                contents=[video_part, prompt]
-            )
-            
-            # produce consistent titles across all sources
-            title_summary = await self._text_summarizer_service.summarize(channel, category, language, response.text)
+            # Path B: Try Gemini multimodal (if enabled and video is short enough)
+            # Path C: Fall back to Whisper transcription if multimodal fails
 
-            return process_response(response.text,
-                title_summary.title,
-                language,
-                channel,     
-                category,
-                metadata)
+            self._logger.info("━━━ PATH B: Gemini Multimodal ━━━")
+            gemini_response_text = None
+            try:
+                prompt = produce_summarization_prompt(language, "youtube")
+                self._logger.debug(f"Youtube prompt: {prompt}")
+
+                client = genai.Client()
+                self._logger.info("➔ Evaluating video duration for Gemini multimodal...")
+                duration_seconds = self._get_video_duration(client, normalized_url)
+                duration_hours = duration_seconds / 3600
+                self._logger.info(f"   Video duration: {duration_hours:.2f} hours")
+
+                # Enforce duration guardrails
+                gemini_model = self._setting.get_summarization_model()
+                if duration_hours <= 1.0:
+                    gemini_model = self._setting.get_summarization_model()
+                elif duration_hours > 1.0 and duration_hours <= 2.0:
+                    gemini_model = self._setting.get_summarization_advanced_model()
+                else:
+                    self._logger.warning(f"✗ Path B skipped: Video too long ({duration_hours:.2f} hours)")
+                    raise Exception("Video too long for Gemini multimodal")
+
+                self._logger.info(f"➔ Sending video to {gemini_model}...")
+                video_part = types.Part.from_uri(file_uri=normalized_url, mime_type="video/mp4")
+                response = client.models.generate_content(
+                    model=gemini_model,
+                    contents=[video_part, prompt]
+                )
+                gemini_response_text = response.text
+                self._logger.info(f"✓ Path B succeeded: Gemini multimodal completed ({len(gemini_response_text)} chars)")
+
+            except Exception as e:
+                self._logger.warning(f"✗ Path B failed: {type(e).__name__}: {str(e)[:100]}")
+                self._logger.info("━━━ PATH C: Whisper Transcription ━━━")
+
+                # Path C: Use Whisper as fallback
+                if self._transcriber_service is None:
+                    self._logger.error("✗ Path C failed: Whisper transcriber is not available")
+                    return create_fallback_structure(message, language, channel, category)
+
+                try:
+                    # Transcribe with Whisper (let it auto-detect language for reliability)
+                    # Note: Passing None for language to avoid invalid language code errors
+                    self._logger.info("➔ Downloading and transcribing audio with Whisper...")
+                    whisper_transcript = self._transcriber_service.transcribe_youtube_video(url, None)
+
+                    if whisper_transcript:
+                        self._logger.info(f"✓ Path C succeeded: Whisper transcription completed ({len(whisper_transcript)} chars)")
+
+                        metadata["mode"] = "whisper" 
+
+                        # Route to text summarizer
+                        self._logger.info("➔ Routing transcript to text summarizer...")
+                        return await self._text_summarizer_service.summarize(channel, category, language, whisper_transcript, metadata)
+                    else:
+                        self._logger.error("✗ Path C failed: Whisper returned empty result")
+                        return create_fallback_structure(message, language, channel, category)
+
+                except Exception as whisper_error:
+                    self._logger.error(f"✗ Path C failed: {type(whisper_error).__name__}: {str(whisper_error)[:100]}")
+                    return create_fallback_structure(message, language, channel, category)
+
+            # If Gemini multimodal succeeded, process the response
+            if gemini_response_text:
+                self._logger.info("➔ Processing Gemini multimodal response...")
+                # produce consistent titles across all sources
+                title_summary = await self._text_summarizer_service.summarize(channel, category, language, gemini_response_text)
+
+                metadata["mode"] = "multimodal" 
+
+                return process_response(gemini_response_text,
+                    title_summary.title,
+                    language,
+                    channel,
+                    category,
+                    metadata)
             
         except Exception as e:
             self._logger.error(f"Error processing message with Gemini: {e}")
@@ -139,19 +186,49 @@ class YoutubeSummarizerService:
         Returns the raw string text if found, otherwise returns None.
         """
         try:
-            # Retrieve transcript list to check available languages
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            
-            # Prioritize Arabic, then English, fallback to auto-generated versions
+            self._logger.debug(f"Fetching transcript for video: {video_id}")
+
+            # Create API instance
+            api = YouTubeTranscriptApi()
+
+            # First, list available transcripts to log them
             try:
-                transcript = transcript_list.find_transcript(['ar', 'en'])
+                transcript_list = api.list(video_id)
+                available_langs = [f"{t.language_code}{'(auto)' if t.is_generated else ''}"
+                                  for t in transcript_list]
+                self._logger.info(f"Available transcripts: {', '.join(available_langs)}")
+            except Exception as list_error:
+                self._logger.debug(f"Could not list transcripts: {list_error}")
+
+            # Try to fetch transcript, prioritizing Arabic and English
+            try:
+                self._logger.debug("Trying to fetch ar/en transcript...")
+                fetched = api.fetch(video_id, languages=['ar', 'en'])
+                selected_language = fetched.language_code
+                self._logger.info(f"Found preferred transcript: {selected_language}")
             except NoTranscriptFound:
-                # If preferred languages aren't found, pick the absolute first available track
-                transcript = next(iter(transcript_list))
-                
-            data = transcript.fetch()
-            return " ".join([entry['text'] for entry in data])
-            
-        except (TranscriptsDisabled, NoTranscriptFound, Exception):
+                # Fall back to any available language
+                try:
+                    self._logger.debug("Trying to fetch any available transcript...")
+                    fetched = api.fetch(video_id, languages=['en'])  # Default to English
+                    selected_language = fetched.language_code
+                    self._logger.info(f"Found transcript: {selected_language}")
+                except NoTranscriptFound:
+                    self._logger.warning(f"No transcripts found for video {video_id}")
+                    return None
+
+            # Convert transcript snippets to text
+            transcript_text = " ".join([snippet.text for snippet in fetched])
+            self._logger.info(f"✓ Transcript fetched successfully ({len(transcript_text)} chars, lang={selected_language})")
+            return transcript_text
+
+        except TranscriptsDisabled:
+            self._logger.warning(f"Transcripts are disabled for video {video_id}")
+            return None
+        except NoTranscriptFound:
+            self._logger.warning(f"No transcripts found for video {video_id}")
+            return None
+        except Exception as e:
+            self._logger.error(f"Unexpected error fetching transcript: {e}", exp=e)
             return None
 

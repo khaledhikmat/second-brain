@@ -32,7 +32,7 @@ class GeneratorNoteService:
         Returns:
             Path to the created note file
         """
-        self._logger.info(f"note: summary result {processed_data}")
+        self._logger.info(f"note: summary result - category: {processed_data.category} - channel: {processed_data.channel} - title: {processed_data.title}")
         if not self._setting.get_vault_path():
             return None 
 
@@ -52,7 +52,7 @@ class GeneratorNoteService:
         # Git sync if enabled
         if self._syncer:
             for note_path in note_paths:
-                
+                # Sync the note file
                 try:
                     success = self._syncer.sync_note(note_path, processed_data.title)
                     if success:
@@ -60,9 +60,34 @@ class GeneratorNoteService:
                     else:
                         self._logger.warning(f"Git sync failed for note: {processed_data.title}")
                 except Exception as e:
-                    self._logger.error(f"Error during Git sync: {e}", exc_info=True)
-                
-                continue
+                    self._logger.error(f"Error during Git sync: {e}", exp=e)
+
+                # Also sync index.md and log.md from the same directory
+                note_dir = note_path.parent
+                index_path = note_dir / "index.md"
+                log_path = note_dir / "log.md"
+
+                # Sync index.md if it exists
+                if index_path.exists():
+                    try:
+                        success = self._syncer.sync_note(index_path, f"index for {note_dir.name}")
+                        if success:
+                            self._logger.info(f"Successfully synced index.md to Git")
+                        else:
+                            self._logger.warning(f"Git sync failed for index.md")
+                    except Exception as e:
+                        self._logger.error(f"Error syncing index.md: {e}", exp=e)
+
+                # Sync log.md if it exists
+                if log_path.exists():
+                    try:
+                        success = self._syncer.sync_note(log_path, f"log for {note_dir.name}")
+                        if success:
+                            self._logger.info(f"Successfully synced log.md to Git")
+                        else:
+                            self._logger.warning(f"Git sync failed for log.md")
+                    except Exception as e:
+                        self._logger.error(f"Error syncing log.md: {e}", exp=e)
 
         self._logger.info("Created note")
         return note_paths
