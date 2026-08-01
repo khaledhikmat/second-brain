@@ -20,6 +20,7 @@ from services.summarizer.youtube import YoutubeSummarizerService
 from services.summarizer.router import RouterSummarizerService
 from services.transcriber.whisper import WhisperTranscriberService
 from services.transcriber.supadata import SupadataTranscriberService
+from services.storage.r2 import R2StorageService
 from services.note.generator import GeneratorNoteService
 from services.note.format_manager import IFormatManager, ObsidianFormatManager, OkfFormatManager
 
@@ -60,8 +61,9 @@ async def process_batch():
         transcriber_service = SupadataTranscriberService(settings_service, logger_service)
 
         # Summarizer Services
+        r2_service = R2StorageService(settings_service, logger_service)
         text_summarizer_service = GeminiTextSummarizerService(settings_service, logger_service)
-        pdf_summarizer_service = PdfSummarizerService(settings_service, logger_service, text_summarizer_service)
+        pdf_summarizer_service = PdfSummarizerService(settings_service, logger_service, text_summarizer_service, r2_service)
         youtube_summarizer_service = YoutubeSummarizerService(settings_service, logger_service, transcriber_service, text_summarizer_service)
         router_summarizer_service = RouterSummarizerService(settings_service, logger_service, text_summarizer_service, youtube_summarizer_service, pdf_summarizer_service)
 

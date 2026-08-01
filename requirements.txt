@@ -26,3 +26,6 @@ pytz==2024.1
 
 # gemini
 google-genai
+
+# object storage
+boto3>=1.35.0

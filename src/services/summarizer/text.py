@@ -73,5 +73,4 @@ class GeminiTextSummarizerService:
                 metadata)
 
         except Exception as e:
-            self._logger.error(f"Error summarizing text message: {e}")
-            return create_fallback_structure(message, language, channel, category)
+            raise ValueError(f"Error processing text message with Gemini: {e}")

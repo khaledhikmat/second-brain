@@ -12,10 +12,11 @@ from services.summarizer.typex import ISummarizerService, SummarizerResult, prod
 
 
 class PdfSummarizerService:
-    def __init__(self, setting: ISettingService, logger: ILoggerService, text_summarizer_service: ISummarizerService):
+    def __init__(self, setting: ISettingService, logger: ILoggerService, text_summarizer_service: ISummarizerService, storage_service=None):
         self._setting = setting
         self._logger = logger
         self._text_summarizer_service = text_summarizer_service
+        self._storage_service = storage_service
 
     async def summarize(
             self,
@@ -40,8 +41,20 @@ class PdfSummarizerService:
             self._logger.error(f"Only Gemini models are supported.")
             return create_fallback_structure(message, language, channel, category)
 
+        r2_temp_path = None
         try:
             pdf_path = message.strip()
+
+            # Download from R2 if the path is an R2 object key
+            if pdf_path.startswith("r2://"):
+                r2_key = pdf_path[len("r2://"):]
+                self._logger.info(f"Downloading from R2: {r2_key}")
+                content = self._storage_service.download(r2_key)
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', prefix='r2_') as tmp:
+                    tmp.write(content)
+                    r2_temp_path = tmp.name
+                pdf_path = r2_temp_path
+
             self._logger.info(f"Analyzing file: {pdf_path}")
 
             if not os.path.exists(pdf_path):
@@ -67,7 +80,7 @@ class PdfSummarizerService:
 
             metadata = {
                 "source": "pdf",
-                "reference": pdf_path
+                "reference": message.strip()
             }
 
             prompt = produce_summarization_prompt(language, "pdf")
@@ -89,8 +102,7 @@ class PdfSummarizerService:
                 metadata)
 
         except Exception as e:
-            self._logger.error(f"Error processing message with Gemini: {e}")
-            return create_fallback_structure(message, language, channel, category)
+            raise ValueError(f"Error processing PDF file with Gemini: {e}")
         finally:
             # Cleanup remote storage.
             # Deleting the file from the API server after processing frees up your project storage quota.
@@ -100,4 +112,8 @@ class PdfSummarizerService:
             # Cleanup temporary local file
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
+
+            # Cleanup R2 download temp file
+            if r2_temp_path and os.path.exists(r2_temp_path):
+                os.unlink(r2_temp_path)
 

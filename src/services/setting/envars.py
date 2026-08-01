@@ -215,6 +215,19 @@ class EnvVarsSettingService:
         """
         return os.getenv("GIT_COMMIT_MESSAGE_TEMPLATE", "Add note: {title}")
 
+    ## storage
+    def get_r2_account_id(self) -> str:
+        return os.getenv("R2_ACCOUNT_ID", "")
+
+    def get_r2_access_key_id(self) -> str:
+        return os.getenv("R2_ACCESS_KEY_ID", "")
+
+    def get_r2_secret_access_key(self) -> str:
+        return os.getenv("R2_SECRET_ACCESS_KEY", "")
+
+    def get_r2_bucket_name(self) -> str:
+        return os.getenv("R2_BUCKET_NAME", "second-brain-uploads")
+
     # batch
     def get_batch_size(self) -> int:
         """
