@@ -23,6 +23,7 @@ from services.transcriber.supadata import SupadataTranscriberService
 from services.storage.r2 import R2StorageService
 from services.note.generator import GeneratorNoteService
 from services.note.format_manager import IFormatManager, ObsidianFormatManager, OkfFormatManager
+from export import run_export
 
 # Load environment variables
 load_dotenv()
@@ -164,6 +165,9 @@ def main():
     try:
         # Run the batch processing
         asyncio.run(process_batch())
+
+        # Export vault notes to local files (and optionally Google Drive)
+        run_export()
 
     except Exception as e:
         print(f"Fatal error in batch processor: {e}")
