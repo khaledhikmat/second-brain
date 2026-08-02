@@ -29,3 +29,8 @@ google-genai
 
 # object storage
 boto3>=1.35.0
+
+# google drive export
+google-api-python-client>=2.100.0
+google-auth>=2.25.0
+google-auth-oauthlib>=1.2.0
