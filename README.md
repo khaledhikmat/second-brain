@@ -127,6 +127,15 @@ python3 src/batch.py
 http://localhost:8080/
 ```
 
+### Step 7: Start Export Locally (Optional)
+
+Start a new terminal:
+
+```bash
+source .venv/bin/activate
+python3 src/export.py
+```
+
 ## Telegram
 
 - Set all environment variables

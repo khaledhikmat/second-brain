@@ -259,6 +259,19 @@ class ISettingService(Protocol):
     def get_r2_bucket_name(self) -> str:
         ...
 
+    ## google drive export
+    def get_google_drive_oauth_token_json(self) -> str:
+        ...
+
+    def get_google_drive_token_file(self) -> str:
+        ...
+
+    def get_google_drive_folder_id(self) -> str:
+        ...
+
+    def get_google_drive_oauth_client_secret_file(self) -> str:
+        ...
+
     ## batch processing
     def get_batch_size(self) -> int:
         """

@@ -228,6 +228,19 @@ class EnvVarsSettingService:
     def get_r2_bucket_name(self) -> str:
         return os.getenv("R2_BUCKET_NAME", "second-brain-uploads")
 
+    ## google drive export
+    def get_google_drive_oauth_token_json(self) -> str:
+        return os.getenv("GOOGLE_DRIVE_OAUTH_TOKEN_JSON", "")
+
+    def get_google_drive_token_file(self) -> str:
+        return os.getenv("GOOGLE_DRIVE_TOKEN_FILE", "")
+
+    def get_google_drive_folder_id(self) -> str:
+        return os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
+
+    def get_google_drive_oauth_client_secret_file(self) -> str:
+        return os.getenv("GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_FILE", "")
+
     # batch
     def get_batch_size(self) -> int:
         """
