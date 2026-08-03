@@ -6,7 +6,7 @@ from google.genai import types
 
 from services.setting.typex import ISettingService
 from services.logger.typex import ILoggerService
-from services.summarizer.typex import SummarizerResult, produce_summarization_prompt, produce_title_prompt, process_response, create_fallback_structure
+from services.summarizer.typex import SummarizerResult, produce_summarization_prompt, produce_title_prompt, produce_word_prompt, process_response, create_fallback_structure
 
 class GeminiTextSummarizerService:
     def __init__(self, setting: ISettingService, logger: ILoggerService):
@@ -45,9 +45,24 @@ class GeminiTextSummarizerService:
         self._logger.info(f"Processing message length {len(message)} using {llm_model}")
 
         try:
+            client = genai.Client()
+            if category.lower() == "word":
+                word_prompt = produce_word_prompt(language, message.strip())
+                response = client.models.generate_content(
+                    model=llm_model,
+                    contents=[word_prompt]
+                )
+                return process_response(
+                    response.text,
+                    message.strip(),
+                    language,
+                    channel,
+                    category,
+                    metadata
+                )
+
             title_prompt = produce_title_prompt(language, message)
 
-            client = genai.Client()
             payload = f"{title_prompt}"
             response = client.models.generate_content(
                 model=llm_model,

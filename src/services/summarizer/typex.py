@@ -41,6 +41,37 @@ class ISummarizerService(Protocol):
 ## common functions used by all summarizers ##
 ##############################################
 
+def produce_word_prompt(language: str, word: str) -> str:
+    lang = language.lower()
+    if lang == "arabic":
+        translation_instruction = "5. **Translation to English**: Provide the English translation and equivalent."
+    elif lang == "english":
+        translation_instruction = "5. **Translation to Arabic**: Provide the Arabic translation and equivalent."
+    else:
+        translation_instruction = f"5. **Translation**: Provide a translation to English if the word is not already in English."
+
+    return f"""You are a language expert. For the given word, produce a structured markdown reference note written entirely in {language}.
+
+Word: {word}
+
+Your output must follow this exact structure (use markdown headers):
+
+## Definition
+Provide a clear, formal definition of the word in {language}.
+
+## Usage Examples
+Provide 3–5 natural usage examples as a numbered list, in {language}.
+
+## Notes
+Any grammatical notes, common mistakes, register (formal/informal), or related forms (plural, verb form, etc.).
+
+## Translation
+{translation_instruction.replace('5. **Translation**: ', '').replace('5. **Translation to English**: ', 'English equivalent: ').replace('5. **Translation to Arabic**: ', 'Arabic equivalent: ')}
+
+Respond only with the structured content above. Do not add any preamble or closing remarks.
+"""
+
+
 def produce_title_prompt(language: str, message: str) -> str:
     prompt = f"""You are an expert knowledge curator. Your job is to produce a concise, descriptive title for the message using the message language.
 
