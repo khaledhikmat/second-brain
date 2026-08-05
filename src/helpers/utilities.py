@@ -15,6 +15,22 @@ def is_english(text: str) -> bool:
     """Check if text is primarily in English."""
     return _detect_language(text) == "en"
 
+def is_reference_message(text: str) -> tuple[bool, str]:
+    """
+    Check if text contains a Google Drive file or folder URL.
+    Returns (True, title) where title is the text preceding the URL,
+    which may be on the same line or a prior line.
+    """
+    drive_re = re.compile(
+        r'https://drive\.google\.com/(?:file/d/|drive/folders/)[^\s]+'
+    )
+    m = drive_re.search(text)
+    if not m:
+        return False, ""
+
+    title = text[:m.start()].strip()
+    return True, title
+
 def is_pdf_message(text: str) -> bool:
     """
     Check if text contains a PDF URL.

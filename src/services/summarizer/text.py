@@ -7,6 +7,7 @@ from google.genai import types
 from services.setting.typex import ISettingService
 from services.logger.typex import ILoggerService
 from services.summarizer.typex import SummarizerResult, produce_summarization_prompt, produce_title_prompt, produce_word_prompt, process_response, create_fallback_structure
+from helpers.utilities import is_reference_message
 
 class GeminiTextSummarizerService:
     def __init__(self, setting: ISettingService, logger: ILoggerService):
@@ -46,6 +47,8 @@ class GeminiTextSummarizerService:
 
         try:
             client = genai.Client()
+
+            # special processing for "word" category
             if category.lower() == "word":
                 word_prompt = produce_word_prompt(language, message.strip())
                 response = client.models.generate_content(
@@ -55,6 +58,18 @@ class GeminiTextSummarizerService:
                 return process_response(
                     response.text,
                     message.strip(),
+                    language,
+                    channel,
+                    category,
+                    metadata
+                )
+
+            # special processing for reference messages (Google Drive links)
+            reference_check, reference_title = is_reference_message(message)
+            if reference_check:
+                return process_response(
+                    message.strip(),
+                    reference_title,
                     language,
                     channel,
                     category,
