@@ -1,3 +1,4 @@
+import re
 from typing import Optional, Protocol
 import yaml
 from pathlib import Path
@@ -32,124 +33,6 @@ class IFormatManager(Protocol):
             Note Path if successful
         """
         ...
-
-class ObsidianFormatManager:
-    def __init__(self, setting: ISettingService, logger: ILoggerService):
-        self._setting = setting
-        self._logger = logger
-
-        # Initialize Jinja2 environment with custom filters
-        templates_dir = self._setting.get_note_templates_dir()
-        self._env = Environment(
-            loader=FileSystemLoader(str(templates_dir)),
-            autoescape=select_autoescape(['html', 'xml']),
-            trim_blocks=True,
-            lstrip_blocks=True
-        )
-        # Register custom filters
-        self._env.filters.update(CUSTOM_FILTERS)
-
-    def get_name(self) -> str:
-        """
-        Get note formatter name.
-
-        Returns:
-            Formatter name
-        """
-        return "Obsidian"
-
-    async def generate_n_format_note_content(self, processed_data: SummarizerResult) -> Optional [Path]:        
-        """
-        Generate an Obsidian-formmatted note from processed data.
-
-        Args:
-            processed_data: SummarizerResult containing structured note data
-
-        Returns:
-            Note path
-        """
-        self._logger.info(f"Obsidian note: summary result - category: {processed_data.category} - channel: {processed_data.channel} - title: {processed_data.title}")
-        if not self._setting.get_vault_path():
-            return None 
-
-        # Create safe filename
-        safe_filename = _create_safe_filename(processed_data.title)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{timestamp}_{safe_filename}.md"
-
-        # Determine the folder path
-        formatter_folder = "obs"
-        lang_folder = processed_data.language
-        daily_folder = datetime.now().strftime("%Y%m%d")
-
-        # Ensure vault_path is a Path object
-        vault_path = Path(self._setting.get_vault_path())
-        note_dir = vault_path / formatter_folder / lang_folder / daily_folder
-        note_dir.mkdir(parents=True, exist_ok=True)
-
-        note_path = Path(note_dir / filename)
-
-        # Generate note content
-        content = self._generate_note_content(processed_data)
-
-        # Write the note
-        with open(note_path, "w", encoding="utf-8") as f:
-            f.write(content)
-
-        self._logger.info(f"Created note: {note_path}")
-
-        # Update index.md and log.md
-        _update_index_md(note_dir, processed_data.title, filename, processed_data.category, self._logger)
-        _update_log_md(note_dir, processed_data.title, filename, processed_data.category, self._logger)
-
-        return note_path
-
-    def _generate_note_content(self, data: SummarizerResult) -> str:
-        """
-        Generate the full note content with frontmatter using Jinja2 template.
-
-        Args:
-            data: Processed note data
-
-        Returns:
-            Complete note content as string
-        """
-        channel = data.channel if data.channel else "telegram"
-        category = data.category if data.category else "jot"
-
-        # Prepare simplified frontmatter
-        frontmatter = {
-            "channel": channel,
-            "category": category,
-            "language": data.language if data.language else "en",
-            "title": data.title,
-            "created": datetime.now().isoformat(),
-            "processed_at": data.processedAt if data.processedAt else datetime.now().isoformat(),
-        }
-
-        # Add Metadata URL to frontmatter if present
-        if data.metadata:
-            for key, val in data.metadata.items():
-                frontmatter[key] = val
-
-        # Generate YAML frontmatter string
-        yaml_str = yaml.dump(
-            frontmatter,
-            allow_unicode=True,
-            default_flow_style=False,
-            sort_keys=False
-        )
-
-        # Normalize context
-        context = {
-            "frontmatter": yaml_str.strip(),
-            "message": data.message if data.message else "",
-            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        }
-
-        # Render template
-        template = self._env.get_template("obsidian.md.j2")
-        return template.render(**context)
 
 class OkfFormatManager:
     def __init__(self, setting: ISettingService, logger: ILoggerService):
@@ -197,12 +80,12 @@ class OkfFormatManager:
 
         # Determine the folder path
         formatter_folder = "okf"
-        lang_folder = processed_data.language
-        daily_folder = datetime.now().strftime("%Y%m%d")
+        lang_folder = processed_data.language if processed_data.language else "unknown"
+        category_folder = _normalize_category_folder(processed_data.category)
 
         # Ensure vault_path is a Path object
         vault_path = Path(self._setting.get_vault_path())
-        note_dir = vault_path / formatter_folder / lang_folder / daily_folder
+        note_dir = vault_path / formatter_folder / lang_folder / category_folder
         note_dir.mkdir(parents=True, exist_ok=True)
 
         note_path = Path(note_dir / filename)
@@ -270,6 +153,18 @@ class OkfFormatManager:
         return template.render(**context)
 
 ## COMMON FUNCTIONS #
+
+def _normalize_category_folder(category: Optional[str]) -> str:
+    """Normalize a category into a safe folder name."""
+    raw = str(category or "").strip()
+    if not raw:
+        return "uncategorized"
+
+    value = raw.lower()
+    value = re.sub(r"[^a-z0-9]+", "_", value)
+    value = value.strip("_")
+    return value or "uncategorized"
+
 
 def _create_safe_filename(title: str) -> str:
     """Create a safe filename from a title."""

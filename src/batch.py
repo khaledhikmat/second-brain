@@ -22,7 +22,7 @@ from services.transcriber.whisper import WhisperTranscriberService
 from services.transcriber.supadata import SupadataTranscriberService
 from services.storage.r2 import R2StorageService
 from services.note.generator import GeneratorNoteService
-from services.note.format_manager import IFormatManager, ObsidianFormatManager, OkfFormatManager
+from services.note.format_manager import IFormatManager, OkfFormatManager
 from export import run_export
 
 # Load environment variables
@@ -72,7 +72,7 @@ async def process_batch():
         syncer_service = GitSyncerService(settings_service, logger_service)
 
         # Note Service
-        formatters: List[IFormatManager] = [ObsidianFormatManager(settings_service, logger_service), OkfFormatManager(settings_service, logger_service)]
+        formatters: List[IFormatManager] = [OkfFormatManager(settings_service, logger_service)]
         note_service = GeneratorNoteService(settings_service, logger_service, syncer_service, formatters)
 
         # Process each evaluation
