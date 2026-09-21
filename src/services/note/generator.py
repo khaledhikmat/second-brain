@@ -7,7 +7,7 @@ from services.setting.typex import ISettingService
 from services.logger.typex import ILoggerService
 from services.syncer.typex import ISyncerService
 from services.summarizer.typex import SummarizerResult
-from services.note.format_manager import IFormatManager, ObsidianFormatManager
+from services.note.format_manager import IFormatManager, OkfFormatManager
 
 # Generator Note Service
 class GeneratorNoteService:
@@ -15,7 +15,7 @@ class GeneratorNoteService:
         self._setting = setting
         self._logger = logger
         self._syncer = syncer
-        self._formatters = formatters or [ObsidianFormatManager(self._setting, self._logger)]
+        self._formatters = formatters or [OkfFormatManager(self._setting, self._logger)]
 
     async def generate_note(
             self,
