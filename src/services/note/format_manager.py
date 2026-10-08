@@ -191,30 +191,8 @@ def _update_index_md(note_dir: Path, title: str, filename: str, category: str, l
         with open(index_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Parse to find category sections
-        lines = content.split("\n")
-        category_found = False
-        insert_index = -1
-
-        for i, line in enumerate(lines):
-            if line.strip() == f"# {category}":
-                category_found = True
-                # Find where to insert (after the category header)
-                insert_index = i + 1
-                break
-
-        if category_found:
-            # Insert under existing category
-            lines.insert(insert_index, new_entry)
-        else:
-            # Add new category section at the end
-            if lines and lines[-1].strip():
-                lines.append("")
-            lines.append(f"# {category}")
-            lines.append("")
-            lines.append(new_entry)
-
-        content = "\n".join(lines)
+        # Append the new entry at the end of the existing content
+        content = f"{content}\n{new_entry}"
     else:
         # Create new index.md
         content = f"# {category}\n\n{new_entry}\n"
@@ -244,29 +222,8 @@ def _update_log_md(note_dir: Path, title: str, filename: str, category: str, log
         with open(log_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Append new entry after the header
-        lines = content.split("\n")
-
-        # Find the header line
-        header_index = -1
-        for i, line in enumerate(lines):
-            if line.strip() == "# Creation Log":
-                header_index = i
-                break
-
-        if header_index != -1:
-            # Insert after header (skip blank line if present)
-            insert_index = header_index + 1
-            if insert_index < len(lines) and lines[insert_index].strip() == "":
-                insert_index += 1
-            lines.insert(insert_index, new_entry)
-        else:
-            # No header found, add at the beginning
-            lines.insert(0, "# Creation Log")
-            lines.insert(1, "")
-            lines.insert(2, new_entry)
-
-        content = "\n".join(lines)
+        # Append the new entry at the end of the existing content
+        content = f"{content}\n{new_entry}"
     else:
         # Create new log.md
         content = f"# Creation Log\n\n{new_entry}\n"
